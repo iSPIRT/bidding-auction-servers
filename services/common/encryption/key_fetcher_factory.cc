@@ -27,7 +27,6 @@
 #include "services/common/clients/config/trusted_server_config_client.h"
 #include "services/common/constants/common_service_flags.h"
 #include "services/common/loggers/request_log_context.h"
-#include "services/common/public_key_url_allowlist.h"
 #include "services/common/util/request_response_constants.h"
 #include "src/encryption/key_fetcher/fake_key_fetcher_manager.h"
 #include "src/encryption/key_fetcher/interface/key_fetcher_manager_interface.h"
@@ -65,11 +64,6 @@ CreatePublicKeyFetcher(TrustedServersConfigClient& config_client) {
   absl::string_view public_key_endpoint =
       config_client.GetStringParameter(PUBLIC_KEY_ENDPOINT);
 
-  if (!IsAllowedPublicKeyUrl(public_key_endpoint, PS_IS_PROD_BUILD)) {
-    PS_LOG(ERROR, SystemLogContext())
-        << kEndpointNotAllowlisted << public_key_endpoint;
-    return nullptr;
-  }
 
   std::vector<std::string> endpoints = {public_key_endpoint.data()};
   server_common::CloudPlatform cloud_platform =
