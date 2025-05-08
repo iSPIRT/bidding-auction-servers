@@ -154,7 +154,7 @@ int main(int argc, char** argv) {
 
         PS_VLOG(6) << "Decrypting the response ...";
         std::string decrypt_response = privacy_sandbox::bidding_auction_servers::DecryptResponse(
-                                      response, secret_first);
+                                      response_ciphertext, secret_first);
                                       std::cout << "Decrypted response: " << decrypt_response << std::endl;
     } else {
       LOG(FATAL) << "Unsupported target service: " << target_service;
