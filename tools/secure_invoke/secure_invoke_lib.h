@@ -17,6 +17,8 @@
 
 #include <memory>
 #include <string>
+#include <curl/curl.h> 
+
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -56,10 +58,14 @@ std::string LoadFile(absl::string_view file_path);
 
 // Returns a JSON string of the OHTTP encrypted of the input GetBidsRawRequest
 // to the secure invoke tool.
-std::string PackagePlainTextGetBidsRequestToJson(
+std::pair<std::string, std::string> PackagePlainTextGetBidsRequestToJson(
     const HpkeKeyset& keyset, std::optional<bool> enable_debug_reporting,
     std::optional<bool> enable_unlimited_egress);
+
+std::pair<CURLcode, std::string> SendHttpsRequest(const std::string& request_json);
+std::string DecryptResponse(const std::string& response_json, std::string& secret);
 
 }  // namespace privacy_sandbox::bidding_auction_servers
 
 #endif  // TOOLS_INVOKE_SECURE_INVOKE_LIB_H_
+

@@ -110,9 +110,10 @@ int main(int argc, char** argv) {
                   json_input_str, client_type, keyset, enable_debug_reporting,
                   enable_debug_info, enable_unlimited_egress, enforce_kanon);
     } else {
-      std::cout << privacy_sandbox::bidding_auction_servers::
+      auto [request_json, secret_first] = privacy_sandbox::bidding_auction_servers::
               PackagePlainTextGetBidsRequestToJson(
                   keyset, enable_debug_reporting, enable_unlimited_egress);
+      std::cout << "encrypted request " << request_json << std::endl;
     }
   } else if (op == "invoke") {
     if (target_service == kSfe) {
@@ -129,9 +130,30 @@ int main(int argc, char** argv) {
       CHECK(status.ok()) << status;
     } else {
       LOG(FATAL) << "Unsupported target service: " << target_service;
+    }  
+  } else if (op == "rest_invoke"){
+      if (target_service == kBfe) {
+        auto [request_json, secret_first] = PackagePlainTextGetBidsRequestToJson(
+            keyset, enable_debug_reporting, enable_unlimited_egress);
+        std::cout << "insider rest_invoke " << request_json << std::endl;
+        auto [result, response] = privacy_sandbox::bidding_auction_servers::SendHttpsRequest(request_json);
+        if (result != CURLE_OK) {
+          LOG(ERROR) << "HTTPS request failed: " << curl_easy_strerror(result);
+        } else {
+          LOG(INFO) << "HTTPS request completed successfully.";
+          std::cout << "Response: " << response << std::endl; // Print the response message
+        }
+        PS_VLOG(6) << "Decrypting the response ...";
+
+        std::string decrypt_response = privacy_sandbox::bidding_auction_servers::DecryptResponse(
+                                      response, secret_first);
+                                      std::cout << "Decrypted response: " << decrypt_response << std::endl;
+    } else {
+      LOG(FATAL) << "Unsupported target service: " << target_service;
     }
   } else {
     LOG(FATAL) << "Unsupported operation.";
   }
   return 0;
 }
+
