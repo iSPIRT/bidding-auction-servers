@@ -13,6 +13,10 @@
 // limitations under the License.
 #include <string>
 
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
+
+
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/log/check.h"
@@ -143,8 +147,12 @@ int main(int argc, char** argv) {
           LOG(INFO) << "HTTPS request completed successfully.";
           std::cout << "Response: " << response << std::endl; // Print the response message
         }
-        PS_VLOG(6) << "Decrypting the response ...";
 
+	json response_json = json::parse(response);
+        std::string response_ciphertext = response_json.at("responseCiphertext").get<std::string>();
+        std::cout << "Response ciphertext: " << response_ciphertext << std::endl;
+
+        PS_VLOG(6) << "Decrypting the response ...";
         std::string decrypt_response = privacy_sandbox::bidding_auction_servers::DecryptResponse(
                                       response, secret_first);
                                       std::cout << "Decrypted response: " << decrypt_response << std::endl;
