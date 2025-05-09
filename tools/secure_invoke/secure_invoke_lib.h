@@ -17,6 +17,8 @@
 
 #include <memory>
 #include <string>
+#include <curl/curl.h> 
+
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -60,6 +62,14 @@ std::string PackagePlainTextGetBidsRequestToJson(
     const HpkeKeyset& keyset, std::optional<bool> enable_debug_reporting,
     std::optional<bool> enable_unlimited_egress);
 
+// Sends a HTTP request to BFE. The parameters used for the request are retrieved
+// from absl flags that are used to run the script.
+absl::Status SendHttpRequestToBfe(
+  const HpkeKeyset& keyset, std::optional<bool> enable_debug_reporting,
+  std::unique_ptr<BuyerFrontEnd::StubInterface> stub = nullptr,
+  std::optional<bool> enable_unlimited_egress = std::nullopt);
+
 }  // namespace privacy_sandbox::bidding_auction_servers
 
 #endif  // TOOLS_INVOKE_SECURE_INVOKE_LIB_H_
+

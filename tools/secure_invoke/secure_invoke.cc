@@ -111,9 +111,10 @@ int main(int argc, char** argv) {
                   enable_debug_info, enable_unlimited_egress, enforce_kanon);
     } else {
       std::cout << privacy_sandbox::bidding_auction_servers::
-              PackagePlainTextGetBidsRequestToJson(
+      	      PackagePlainTextGetBidsRequestToJson(
                   keyset, enable_debug_reporting, enable_unlimited_egress);
     }
+
   } else if (op == "invoke") {
     if (target_service == kSfe) {
       const auto status =
@@ -129,9 +130,20 @@ int main(int argc, char** argv) {
       CHECK(status.ok()) << status;
     } else {
       LOG(FATAL) << "Unsupported target service: " << target_service;
+    }  
+  } else if (op == "rest_invoke"){
+      if (target_service == kBfe) {
+        const auto status =
+        privacy_sandbox::bidding_auction_servers::SendHttpRequestToBfe(
+            keyset, enable_debug_reporting, /*stub=*/nullptr,
+            enable_unlimited_egress);
+        CHECK(status.ok()) << status;
+    } else {
+      LOG(FATAL) << "Unsupported target service: " << target_service;
     }
   } else {
     LOG(FATAL) << "Unsupported operation.";
   }
   return 0;
 }
+

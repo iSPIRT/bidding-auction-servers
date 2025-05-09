@@ -19,6 +19,9 @@
 #include <memory>
 #include <utility>
 
+#include <curl/curl.h>
+#include "absl/log/log.h"
+
 #include <google/protobuf/text_format.h>
 #include <google/protobuf/util/json_util.h>
 
@@ -32,10 +35,15 @@
 #include "services/common/encryption/crypto_client_factory.h"
 #include "services/common/encryption/key_fetcher_factory.h"
 #include "services/common/util/json_util.h"
+#include "src/core/utils/base64.h"
 #include "src/encryption/key_fetcher/fake_key_fetcher_manager.h"
 #include "tools/secure_invoke/flags.h"
 #include "tools/secure_invoke/payload_generator/payload_packaging.h"
 #include "tools/secure_invoke/payload_generator/payload_packaging_utils.h"
+
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
+using google::scp::core::utils::Base64Decode;
 
 namespace privacy_sandbox::bidding_auction_servers {
 
@@ -395,6 +403,156 @@ absl::Status SendRequestToBfe(
           },
           std::move(stub));
   CHECK(call_status.ok()) << call_status;
+  return status;
+}
+
+size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+  size_t total_size = size * nmemb;
+  std::string* response = static_cast<std::string*>(userp);
+  response->append(static_cast<char*>(contents), total_size);
+  return total_size;
+}
+
+// Function to send HTTPS request
+std::pair<CURLcode, std::string> SendHttpsRequest(const std::string& request_json) {
+  CURL* curl = curl_easy_init(); // Initialize cURL
+  if (!curl) {
+    LOG(FATAL) << "Failed to initialize cURL.";
+    return {CURLE_FAILED_INIT, ""};
+  }
+
+  CURLcode res;
+  struct curl_slist* headers = nullptr;
+  std::string response; // To store the response body
+
+  privacy_sandbox::bidding_auction_servers::RequestOptions request_options;
+  request_options.host_addr = absl::GetFlag(FLAGS_host_addr);
+  request_options.client_ip = absl::GetFlag(FLAGS_client_ip);
+  request_options.user_agent = absl::GetFlag(FLAGS_client_user_agent);
+  request_options.accept_language = absl::GetFlag(FLAGS_client_accept_language);
+  request_options.insecure = absl::GetFlag(FLAGS_insecure);
+
+  if (request_options.host_addr.empty()) {
+    return {CURLE_URL_MALFORMAT, "BFE host address must be specified"};
+  }
+
+  if (request_options.client_ip.empty()) {
+    return {CURLE_BAD_FUNCTION_ARGUMENT, "Client IP must be specified"};
+  }
+
+  if (request_options.user_agent.empty()) {
+    return {CURLE_BAD_FUNCTION_ARGUMENT, "User Agent must be specified"};
+  }
+
+  if (request_options.accept_language.empty()) {
+    return {CURLE_BAD_FUNCTION_ARGUMENT, "Accept Language must be specified"};
+  }
+
+  // Add headers (e.g., Content-Type)
+  headers = curl_slist_append(headers, "Content-Type: application/json");
+  headers = curl_slist_append(headers, ("x-bna-client-ip: " + request_options.client_ip).c_str());
+  headers = curl_slist_append(headers, ("x-user-agent: " + request_options.user_agent).c_str());
+  headers = curl_slist_append(headers, ("x-accept-language: " + request_options.accept_language).c_str());
+
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+  // Set the URL
+  curl_easy_setopt(curl, CURLOPT_URL, request_options.host_addr.c_str());
+
+  // Set HTTPS POST method
+  curl_easy_setopt(curl, CURLOPT_POST, 1L);
+
+  // Set the request payload
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_json.c_str());
+
+  // Add insecure flag if specified
+
+  if (request_options.insecure) {
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L); // Disable peer verification
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L); // Disable host verification
+  }
+
+  // Enable verbose output for debugging (optional)
+  // curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+
+  // Set the callback function to capture the response
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+
+  // Perform the request
+  res = curl_easy_perform(curl);
+
+  // Cleanup
+  curl_slist_free_all(headers);
+  curl_easy_cleanup(curl);
+  // Return the result of the cURL request
+  return {res, response};
+}
+
+std::string DecryptResponse(
+  std::unique_ptr<CryptoClientWrapperInterface>& crypto_client,
+  const std::string& response, std::string& secret){
+  absl::StatusOr<
+          google::cmrt::sdk::crypto_service::v1::AeadDecryptResponse>
+          decrypt_response = crypto_client->AeadDecrypt(response, secret);
+  CHECK(decrypt_response.ok()) << decrypt_response.status();
+  std::string decrypted_payload =
+      std::move(*decrypt_response->mutable_payload());
+  return decrypted_payload;
+}
+
+absl::Status SendHttpRequestToBfe(
+  const HpkeKeyset& keyset, std::optional<bool> enable_debug_reporting,
+  std::unique_ptr<BuyerFrontEnd::StubInterface> stub,
+  std::optional<bool> enable_unlimited_egress) {
+
+  GetBidsRequest::GetBidsRawRequest get_bids_raw_request =
+  GetBidsRawRequestFromInput(enable_debug_reporting,
+                              enable_unlimited_egress);
+  auto key_fetcher_manager =
+      std::make_unique<server_common::FakeKeyFetcherManager>(
+          keyset.public_key, "unused", std::to_string(keyset.key_id));
+  auto crypto_client = CreateCryptoClient();
+  auto secret_request = EncryptRequestWithHpke<GetBidsRequest>(
+      get_bids_raw_request.SerializeAsString(), *crypto_client,
+      *key_fetcher_manager, server_common::CloudPlatform::kGcp);
+  CHECK(secret_request.ok()) << secret_request.status();
+  std::string get_bids_request_json;
+  auto get_bids_request_json_status =
+      google::protobuf::util::MessageToJsonString(*secret_request->second,
+                                                  &get_bids_request_json);
+  CHECK(get_bids_request_json_status.ok()) << get_bids_request_json_status;
+
+  std::cout << "insider rest_invoke " << get_bids_request_json << std::endl;
+  auto [result, response] = SendHttpsRequest(get_bids_request_json);
+  if (result != CURLE_OK) {
+    LOG(ERROR) << "HTTPS request failed: " << curl_easy_strerror(result);
+  } else {
+    LOG(INFO) << "HTTPS request completed successfully.";
+    std::cout << "Response: " << response << std::endl; // Print the response message
+  }
+
+  json response_json = json::parse(response);
+  std::string response_ciphertext = response_json.at("responseCiphertext").get<std::string>();
+  std::string decoded_ciphertext;
+  Base64Decode(response_ciphertext, decoded_ciphertext);
+  std::cout << "Response ciphertext: " << response_ciphertext << std::endl;
+  PS_VLOG(6) << "Decrypting the response ...";
+  auto decrypt_response = DecryptResponse(
+                                crypto_client, decoded_ciphertext, secret_request->first);
+  std::cout << "Response " << decrypt_response;
+
+  std::unique_ptr<GetBidsResponse::GetBidsRawResponse> raw_response =
+      std::make_unique<GetBidsResponse::GetBidsRawResponse>();
+
+  if (!raw_response->ParseFromString(decrypt_response)) {
+    std::cout << "Failed to parse proto from decrypted response";
+  }
+
+  std::cout << "Decryption/decoding of response succeeded: "
+             << raw_response->DebugString();
+
+  absl::Status status = absl::OkStatus();
   return status;
 }
 
