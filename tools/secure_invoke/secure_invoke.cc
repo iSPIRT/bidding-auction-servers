@@ -110,11 +110,11 @@ int main(int argc, char** argv) {
                   json_input_str, client_type, keyset, enable_debug_reporting,
                   enable_debug_info, enable_unlimited_egress, enforce_kanon);
     } else {
-      auto [request_json, secret_first] = privacy_sandbox::bidding_auction_servers::
-              PackagePlainTextGetBidsRequestToJson(
+      std::cout << privacy_sandbox::bidding_auction_servers::
+      	      PackagePlainTextGetBidsRequestToJson(
                   keyset, enable_debug_reporting, enable_unlimited_egress);
-      std::cout << "encrypted request " << request_json << std::endl;
     }
+
   } else if (op == "invoke") {
     if (target_service == kSfe) {
       const auto status =

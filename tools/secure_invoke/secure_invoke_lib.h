@@ -58,7 +58,7 @@ std::string LoadFile(absl::string_view file_path);
 
 // Returns a JSON string of the OHTTP encrypted of the input GetBidsRawRequest
 // to the secure invoke tool.
-std::pair<std::string, std::string> PackagePlainTextGetBidsRequestToJson(
+std::string PackagePlainTextGetBidsRequestToJson(
     const HpkeKeyset& keyset, std::optional<bool> enable_debug_reporting,
     std::optional<bool> enable_unlimited_egress);
 

@@ -352,7 +352,7 @@ GetBidsRequest::GetBidsRawRequest GetBidsRawRequestFromInput(
   return get_bids_raw_request;
 }
 
-std::pair<std::string, std::string> PackagePlainTextGetBidsRequestToJson(
+std::string PackagePlainTextGetBidsRequestToJson(
     const HpkeKeyset& keyset, std::optional<bool> enable_debug_reporting,
     std::optional<bool> enable_unlimited_egress) {
   GetBidsRequest::GetBidsRawRequest get_bids_raw_request =
@@ -371,8 +371,7 @@ std::pair<std::string, std::string> PackagePlainTextGetBidsRequestToJson(
       google::protobuf::util::MessageToJsonString(*secret_request->second,
                                                   &get_bids_request_json);
   CHECK(get_bids_request_json_status.ok()) << get_bids_request_json_status;
-  return {get_bids_request_json, secret_request->first};
-
+  return get_bids_request_json;
 }
 
 absl::Status SendRequestToBfe(
