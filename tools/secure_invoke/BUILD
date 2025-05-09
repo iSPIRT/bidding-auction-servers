@@ -28,6 +28,7 @@ cc_library(
     hdrs = ["secure_invoke_lib.h"],
     deps = [
         ":flags",
+        "@google_privacysandbox_servers_common//src/core/utils:core_utils",
         "//api:bidding_auction_servers_cc_grpc_proto",
         "//services/common/clients/seller_frontend_server:async_client",
         "//services/common/test/utils:ohttp_test_utils",

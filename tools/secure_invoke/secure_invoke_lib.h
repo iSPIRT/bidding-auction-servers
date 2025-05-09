@@ -62,8 +62,12 @@ std::pair<std::string, std::string> PackagePlainTextGetBidsRequestToJson(
     const HpkeKeyset& keyset, std::optional<bool> enable_debug_reporting,
     std::optional<bool> enable_unlimited_egress);
 
-std::pair<CURLcode, std::string> SendHttpsRequest(const std::string& request_json);
-std::string DecryptResponse(const std::string& response_json, std::string& secret);
+// Sends a HTTP request to BFE. The parameters used for the request are retrieved
+// from absl flags that are used to run the script.
+absl::Status SendHttpRequestToBfe(
+  const HpkeKeyset& keyset, std::optional<bool> enable_debug_reporting,
+  std::unique_ptr<BuyerFrontEnd::StubInterface> stub = nullptr,
+  std::optional<bool> enable_unlimited_egress = std::nullopt);
 
 }  // namespace privacy_sandbox::bidding_auction_servers
 

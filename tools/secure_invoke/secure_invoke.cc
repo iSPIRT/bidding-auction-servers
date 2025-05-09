@@ -13,10 +13,6 @@
 // limitations under the License.
 #include <string>
 
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
-
-
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/log/check.h"
@@ -137,25 +133,11 @@ int main(int argc, char** argv) {
     }  
   } else if (op == "rest_invoke"){
       if (target_service == kBfe) {
-        auto [request_json, secret_first] = PackagePlainTextGetBidsRequestToJson(
-            keyset, enable_debug_reporting, enable_unlimited_egress);
-        std::cout << "insider rest_invoke " << request_json << std::endl;
-        auto [result, response] = privacy_sandbox::bidding_auction_servers::SendHttpsRequest(request_json);
-        if (result != CURLE_OK) {
-          LOG(ERROR) << "HTTPS request failed: " << curl_easy_strerror(result);
-        } else {
-          LOG(INFO) << "HTTPS request completed successfully.";
-          std::cout << "Response: " << response << std::endl; // Print the response message
-        }
-
-	json response_json = json::parse(response);
-        std::string response_ciphertext = response_json.at("responseCiphertext").get<std::string>();
-        std::cout << "Response ciphertext: " << response_ciphertext << std::endl;
-
-        PS_VLOG(6) << "Decrypting the response ...";
-        std::string decrypt_response = privacy_sandbox::bidding_auction_servers::DecryptResponse(
-                                      response_ciphertext, secret_first);
-                                      std::cout << "Decrypted response: " << decrypt_response << std::endl;
+        const auto status =
+        privacy_sandbox::bidding_auction_servers::SendHttpRequestToBfe(
+            keyset, enable_debug_reporting, /*stub=*/nullptr,
+            enable_unlimited_egress);
+        CHECK(status.ok()) << status;
     } else {
       LOG(FATAL) << "Unsupported target service: " << target_service;
     }

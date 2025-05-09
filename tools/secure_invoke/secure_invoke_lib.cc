@@ -35,10 +35,15 @@
 #include "services/common/encryption/crypto_client_factory.h"
 #include "services/common/encryption/key_fetcher_factory.h"
 #include "services/common/util/json_util.h"
+#include "src/core/utils/base64.h"
 #include "src/encryption/key_fetcher/fake_key_fetcher_manager.h"
 #include "tools/secure_invoke/flags.h"
 #include "tools/secure_invoke/payload_generator/payload_packaging.h"
 #include "tools/secure_invoke/payload_generator/payload_packaging_utils.h"
+
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
+using google::scp::core::utils::Base64Decode;
 
 namespace privacy_sandbox::bidding_auction_servers {
 
@@ -486,12 +491,60 @@ std::pair<CURLcode, std::string> SendHttpsRequest(const std::string& request_jso
 }
 
 std::string DecryptResponse(
+  std::unique_ptr<CryptoClientWrapperInterface>& crypto_client,
   const std::string& response, std::string& secret){
-    auto crypto_client = CreateCryptoClient();
-    absl::StatusOr<
+  absl::StatusOr<
           google::cmrt::sdk::crypto_service::v1::AeadDecryptResponse>
           decrypt_response = crypto_client->AeadDecrypt(response, secret);
-    return decrypt_response->payload();
+  CHECK(decrypt_response.ok()) << decrypt_response.status();
+  std::string decrypted_payload =
+      std::move(*decrypt_response->mutable_payload());
+  return decrypted_payload;
+}
+
+absl::Status SendHttpRequestToBfe(
+  const HpkeKeyset& keyset, std::optional<bool> enable_debug_reporting,
+  std::unique_ptr<BuyerFrontEnd::StubInterface> stub,
+  std::optional<bool> enable_unlimited_egress) {
+
+  GetBidsRequest::GetBidsRawRequest get_bids_raw_request =
+  GetBidsRawRequestFromInput(enable_debug_reporting,
+                              enable_unlimited_egress);
+  auto key_fetcher_manager =
+      std::make_unique<server_common::FakeKeyFetcherManager>(
+          keyset.public_key, "unused", std::to_string(keyset.key_id));
+  auto crypto_client = CreateCryptoClient();
+  auto secret_request = EncryptRequestWithHpke<GetBidsRequest>(
+      get_bids_raw_request.SerializeAsString(), *crypto_client,
+      *key_fetcher_manager, server_common::CloudPlatform::kGcp);
+  CHECK(secret_request.ok()) << secret_request.status();
+  std::string get_bids_request_json;
+  auto get_bids_request_json_status =
+      google::protobuf::util::MessageToJsonString(*secret_request->second,
+                                                  &get_bids_request_json);
+  CHECK(get_bids_request_json_status.ok()) << get_bids_request_json_status;
+
+  std::cout << "insider rest_invoke " << get_bids_request_json << std::endl;
+  auto [result, response] = SendHttpsRequest(get_bids_request_json);
+  if (result != CURLE_OK) {
+    LOG(ERROR) << "HTTPS request failed: " << curl_easy_strerror(result);
+  } else {
+    LOG(INFO) << "HTTPS request completed successfully.";
+    std::cout << "Response: " << response << std::endl; // Print the response message
   }
+
+  json response_json = json::parse(response);
+  std::string response_ciphertext = response_json.at("responseCiphertext").get<std::string>();
+  std::string decoded_ciphertext;
+  Base64Decode(response_ciphertext, decoded_ciphertext);
+  std::cout << "Response ciphertext: " << response_ciphertext << std::endl;
+  PS_VLOG(6) << "Decrypting the response ...";
+  auto decrypt_response = DecryptResponse(
+                                crypto_client, decoded_ciphertext, secret_request->first);
+  std::cout << "Decrypted response: " << decrypt_response << std::endl;
+  std::cout << "Response " << decrypt_response;
+  absl::Status status = absl::OkStatus();
+  return status;
+}
 
 }  // namespace privacy_sandbox::bidding_auction_servers
