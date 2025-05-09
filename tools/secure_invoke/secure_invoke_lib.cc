@@ -541,8 +541,18 @@ absl::Status SendHttpRequestToBfe(
   PS_VLOG(6) << "Decrypting the response ...";
   auto decrypt_response = DecryptResponse(
                                 crypto_client, decoded_ciphertext, secret_request->first);
-  std::cout << "Decrypted response: " << decrypt_response << std::endl;
   std::cout << "Response " << decrypt_response;
+
+  std::unique_ptr<GetBidsResponse::GetBidsRawResponse> raw_response =
+      std::make_unique<GetBidsResponse::GetBidsRawResponse>();
+
+  if (!raw_response->ParseFromString(decrypt_response)) {
+    std::cout << "Failed to parse proto from decrypted response";
+  }
+
+  std::cout << "Decryption/decoding of response succeeded: "
+             << raw_response->DebugString();
+
   absl::Status status = absl::OkStatus();
   return status;
 }
