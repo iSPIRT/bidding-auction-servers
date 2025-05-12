@@ -11,19 +11,13 @@ FROM ubuntu:latest
      jq \
      curl 
      
-# Copy entrypoint script
-#COPY tools/secure_invoke.tar .
-
-# Extract the tarball
-#RUN tar -xf secure_invoke.tar
-
-#RUN rm -rf secure_invoke.tar
-
 WORKDIR /secure_invoke
 
+# copy invoke binary and entrypoint script
 COPY tools/secure_invoke/invoke .
 COPY tools/secure_invoke/entrypoint.sh .
 
+# copy dependent library
 COPY external/cddl_lib/libcddl.so /lib
 
 # Make executable
