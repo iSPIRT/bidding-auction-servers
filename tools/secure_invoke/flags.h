@@ -42,5 +42,6 @@ ABSL_DECLARE_FLAG(std::optional<bool>, enable_debug_info);
 ABSL_DECLARE_FLAG(std::optional<bool>, enable_unlimited_egress);
 ABSL_DECLARE_FLAG(std::optional<bool>, enforce_kanon);
 ABSL_DECLARE_FLAG(std::string, pas_buyer_input_json);
+ABSL_DECLARE_FLAG(std::string, headers);
 
 #endif  // TOOLS_SECURE_INVOKE_FLAGS_H_
