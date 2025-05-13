@@ -19,12 +19,6 @@ cd "${PROJECT_ROOT}"
 
 cp "${PROJECT_ROOT}/tools/secure_invoke/entrypoint.sh" "${BAZEL_BIN_DIR}/tools/secure_invoke/entrypoint.sh"
 
-# Navigate to bazel-bin/tools and create tar archive
-echo "Creating tar archive of the secure_invoke binary..."
-cd "${BAZEL_BIN_DIR}/tools"
-tar -cf secure_invoke.tar secure_invoke/
-echo "Created tar archive at ${BAZEL_BIN_DIR}/tools/secure_invoke.tar"
-# Build the Docker image
 echo "Building Docker image..."
 cd "${BAZEL_BIN_DIR}"
 docker build -t "${IMAGE_NAME}:${IMAGE_TAG}" -f ${PROJECT_ROOT}/tools/secure_invoke/Dockerfile .
