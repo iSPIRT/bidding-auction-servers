@@ -90,3 +90,5 @@ ABSL_FLAG(std::string, pas_buyer_input_json, "",
 ABSL_FLAG(std::optional<bool>, enable_unlimited_egress, std::nullopt,
           "Set to true to indicate to server that temporary unlimited egress "
           "should be enabled");
+
+ABSL_FLAG(std::string, headers, "", "additional headers in key=value; format.");

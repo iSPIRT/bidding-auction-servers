@@ -28,7 +28,6 @@ cc_library(
     hdrs = ["secure_invoke_lib.h"],
     deps = [
         ":flags",
-        "@google_privacysandbox_servers_common//src/core/utils:core_utils",
         "//api:bidding_auction_servers_cc_grpc_proto",
         "//services/common/clients/seller_frontend_server:async_client",
         "//services/common/test/utils:ohttp_test_utils",
@@ -37,6 +36,7 @@ cc_library(
         "//tools/secure_invoke/payload_generator:payload_packaging_utils",
         "@com_github_google_quiche//quiche:oblivious_http_unstable_api",
         "@com_google_absl//absl/container:btree",
+        "@google_privacysandbox_servers_common//src/core/utils:core_utils",
         "@google_privacysandbox_servers_common//src/encryption/key_fetcher:fake_key_fetcher_manager",
     ],
 )
