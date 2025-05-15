@@ -64,7 +64,14 @@ fi
 ARGS="$ARGS -client_ip=127.0.0.1"
 
 # Add insecure flag when accessing local services
-ARGS="$ARGS -insecure"
+if [ -n "${INSECURE}" ] && [ "${INSECURE}" = "true" ] ; then
+  ARGS="$ARGS -insecure=${INSECURE}"
+fi
+
+# Add additional headers if provided
+if [ -n "${HEADERS}" ]; then
+  ARGS="$ARGS -headers=${HEADERS}"
+fi
 
 # Set number of retries if specified
 if [ -n "${RETRIES}" ]; then
