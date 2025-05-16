@@ -1,4 +1,4 @@
-#!/bin/bassh
+#!/bin/bash
 set -e
 
 # This script converts environment variables to command-line arguments
@@ -35,7 +35,7 @@ if [ -n "${KMS_HOST}" ]; then
       KEY_ID=$(echo $LIVE_KEYS | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
       echo "Extracted key ID using grep: ${KEY_ID}"
     fi
-    
+
     # Add extracted values to arguments if they exist
     if [ -n "$PUBLIC_KEY" ] && [ -n "$KEY_ID" ]; then
       ARGS="$ARGS -public_key=${PUBLIC_KEY} -key_id=${KEY_ID}"
@@ -50,7 +50,7 @@ if [ -n "${KMS_HOST}" ]; then
   #ARGS="$ARGS -kms_host=${KMS_HOST}"
 fi
 
-# Add request path 
+# Add request path
 if [ -n "${REQUEST_PATH}" ]; then
   ARGS="$ARGS -input_file=/${REQUEST_PATH}"
 fi
@@ -83,7 +83,7 @@ if [ -n "${RETRIES}" ]; then
     exec /secure_invoke/invoke $ARGS "$@"
     # Add a small delay between retries
     [ $i -lt ${RETRIES} ] && sleep 1
-i=$((i + 1))
+    i=$((i + 1))
   done
 else
   # No retries, just run once

@@ -2,15 +2,11 @@
 FROM ubuntu:latest
 
 # Install necessary runtime dependencies
- RUN apt update && \
+RUN apt update && \
      apt install -y  \
-     #libssl1.1 \
-     #libcurl4 \
-     #ca-certificates \
-     #busybox \
      jq \
-     curl 
-     
+     curl
+
 WORKDIR /secure_invoke
 
 # copy invoke binary and entrypoint script
