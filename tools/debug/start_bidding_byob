@@ -25,6 +25,7 @@ else
   FETCH_MODE=2
 fi
 
+PS_VERBOSITY=40
 SERVER_START_CMD=$(cat << END
 /server/bin/server \
 --enable_bidding_service_benchmark="true" \
@@ -69,6 +70,6 @@ END
 #docker load -i dist/debian/bidding_service_image.tar
 
 docker run --network=host --security-opt=seccomp=unconfined \
---security-opt=apparmor=unconfined --cap-add=CAP_SYS_ADMIN \
+--security-opt=apparmor=unconfined --cap-add=CAP_SYS_ADMIN --privileged \
 -it bazel/production/packaging/gcp/bidding_service:server_docker_image_z \
 -c "${SERVER_START_CMD}"
