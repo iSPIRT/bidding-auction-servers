@@ -32,7 +32,7 @@ GenerateBidByobDispatchClient::Create(int num_workers) {
       auto byob_service,
       roma_service::ByobGenerateProtectedAudienceBidService<>::Create(
           {
-              .lib_mounts = "",
+          //  .lib_mounts = "",
               .enable_seccomp_filter = true,
           },
           /*mode=*/Mode::kModeNsJailSandbox));

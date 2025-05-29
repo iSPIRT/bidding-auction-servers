@@ -1,4 +1,18 @@
-#!/bin/bassh
+#!/bin/bash
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 set -e
 
 # This script converts environment variables to command-line arguments
@@ -35,7 +49,7 @@ if [ -n "${KMS_HOST}" ]; then
       KEY_ID=$(echo $LIVE_KEYS | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
       echo "Extracted key ID using grep: ${KEY_ID}"
     fi
-    
+
     # Add extracted values to arguments if they exist
     if [ -n "$PUBLIC_KEY" ] && [ -n "$KEY_ID" ]; then
       ARGS="$ARGS -public_key=${PUBLIC_KEY} -key_id=${KEY_ID}"
@@ -50,7 +64,7 @@ if [ -n "${KMS_HOST}" ]; then
   #ARGS="$ARGS -kms_host=${KMS_HOST}"
 fi
 
-# Add request path 
+# Add request path
 if [ -n "${REQUEST_PATH}" ]; then
   ARGS="$ARGS -input_file=/${REQUEST_PATH}"
 fi
@@ -64,7 +78,14 @@ fi
 ARGS="$ARGS -client_ip=127.0.0.1"
 
 # Add insecure flag when accessing local services
-ARGS="$ARGS -insecure"
+if [ -n "${INSECURE}" ] && [ "${INSECURE}" = "true" ] ; then
+  ARGS="$ARGS -insecure=${INSECURE}"
+fi
+
+# Add additional headers if provided
+if [ -n "${HEADERS}" ]; then
+  ARGS="$ARGS -headers=${HEADERS}"
+fi
 
 # Set number of retries if specified
 if [ -n "${RETRIES}" ]; then
@@ -76,7 +97,7 @@ if [ -n "${RETRIES}" ]; then
     exec /secure_invoke/invoke $ARGS "$@"
     # Add a small delay between retries
     [ $i -lt ${RETRIES} ] && sleep 1
-i=$((i + 1))
+    i=$((i + 1))
   done
 else
   # No retries, just run once
