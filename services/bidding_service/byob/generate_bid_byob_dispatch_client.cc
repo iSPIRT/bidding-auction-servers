@@ -35,7 +35,7 @@ GenerateBidByobDispatchClient::Create(int num_workers) {
           //  .lib_mounts = "",
               .enable_seccomp_filter = true,
           },
-          /*mode=*/Mode::kModeNsJailSandbox));
+          /*mode=*/Mode::kModeMinimalSandbox));
   return GenerateBidByobDispatchClient(std::move(byob_service), num_workers);
 }
 
