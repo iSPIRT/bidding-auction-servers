@@ -70,5 +70,5 @@ END
 
 docker run --network=host --security-opt=seccomp=unconfined \
 --security-opt=apparmor=unconfined --cap-add=CAP_SYS_ADMIN --privileged \
--it bazel/production/packaging/gcp/bidding_service:server_docker_image_z \
+-it bazel/production/packaging/gcp/bidding_service:server_docker_image \
 -c "${SERVER_START_CMD}"
