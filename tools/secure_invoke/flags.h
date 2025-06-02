@@ -43,5 +43,8 @@ ABSL_DECLARE_FLAG(std::optional<bool>, enable_unlimited_egress);
 ABSL_DECLARE_FLAG(std::optional<bool>, enforce_kanon);
 ABSL_DECLARE_FLAG(std::string, pas_buyer_input_json);
 ABSL_DECLARE_FLAG(std::string, headers);
+ABSL_DECLARE_FLAG(std::string, client_key);
+ABSL_DECLARE_FLAG(std::string, client_cert);
+ABSL_DECLARE_FLAG(std::string, ca_cert);
 
 #endif  // TOOLS_SECURE_INVOKE_FLAGS_H_

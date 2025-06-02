@@ -449,6 +449,17 @@ std::pair<CURLcode, std::string> SendHttpsRequest(
   request_options.accept_language = absl::GetFlag(FLAGS_client_accept_language);
   request_options.insecure = absl::GetFlag(FLAGS_insecure);
   request_options.headers = absl::GetFlag(FLAGS_headers);
+  request_options.client_key = absl::GetFlag(FLAGS_client_key);
+  request_options.client_cert = absl::GetFlag(FLAGS_client_cert);
+  request_options.ca_cert = absl::GetFlag(FLAGS_ca_cert);
+  
+  // Debug output to check flag values
+  std::cout << "DEBUG: Starting SendHttpsRequest with the following options:" << std::endl;
+  std::cout << "DEBUG: Host: " << request_options.host_addr << std::endl;
+  std::cout << "DEBUG: client key flag: '" << absl::GetFlag(FLAGS_client_key) << "'" << std::endl;
+  std::cout << "DEBUG: client cert flag: '" << absl::GetFlag(FLAGS_client_cert) << "'" << std::endl;
+  std::cout << "DEBUG: CA cert flag: '" << absl::GetFlag(FLAGS_ca_cert) << "'" << std::endl;
+  std::cout << "DEBUG: Insecure mode: " << (request_options.insecure ? "true" : "false") << std::endl;
 
   if (request_options.host_addr.empty()) {
     return {CURLE_URL_MALFORMAT, "BFE host address must be specified"};
@@ -488,23 +499,50 @@ std::pair<CURLcode, std::string> SendHttpsRequest(
   // Set the URL
   curl_easy_setopt(curl, CURLOPT_URL, request_options.host_addr.c_str());
 
+  // Set the client certificate and key if provided
+  if (request_options.client_key.empty() !=
+      request_options.client_cert.empty()) {
+    return {CURLE_BAD_FUNCTION_ARGUMENT,
+            "Both client_cert and client_key must be provided or neither."};
+  }
+  
+  if (!request_options.client_key.empty() && 
+      !request_options.client_cert.empty()) {
+
+    curl_easy_setopt(curl, CURLOPT_SSLKEY,
+                     request_options.client_key.c_str());
+    curl_easy_setopt(curl, CURLOPT_SSLCERT,
+                     request_options.client_cert.c_str());
+                     
+    std::cout << "DEBUG: client key and cert settings applied to CURL" << std::endl;
+  } else {
+    std::cout << "DEBUG: Not using client (empty key or cert)" << std::endl;
+  }
+  LOG(INFO) << "Using CA cert: " << request_options.ca_cert;
+  if (!request_options.ca_cert.empty()) {
+    curl_easy_setopt(curl, CURLOPT_CAINFO,
+                     request_options.ca_cert.c_str());
+  }
   // Set HTTPS POST method
   curl_easy_setopt(curl, CURLOPT_POST, 1L);
+
+  // Set verbose output for debugging (optional)
+  curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+
+  curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
 
   // Set the request payload
   curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_json.c_str());
 
   // Add insecure flag if specified
-
   if (request_options.insecure) {
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER,
                      0L);  // Disable peer verification
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST,
                      0L);  // Disable host verification
   }
-
   // Enable verbose output for debugging (optional)
-  // curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+  curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 
   // Set the callback function to capture the response
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
@@ -535,6 +573,13 @@ absl::Status SendHttpRequestToBfe(
     const HpkeKeyset& keyset, std::optional<bool> enable_debug_reporting,
     std::unique_ptr<BuyerFrontEnd::StubInterface> stub,
     std::optional<bool> enable_unlimited_egress) {
+  std::cout << "DEBUG: Entering SendHttpRequestToBfe - REST API implementation" << std::endl;
+  std::cout << "DEBUG: Current flags:" << std::endl;
+  std::cout << "DEBUG: OPERATION: " << absl::GetFlag(FLAGS_op) << std::endl;
+  std::cout << "DEBUG: client key: " << absl::GetFlag(FLAGS_client_key) << std::endl;
+  std::cout << "DEBUG: client cert: " << absl::GetFlag(FLAGS_client_cert) << std::endl;
+  std::cout << "DEBUG: CA cert: " << absl::GetFlag(FLAGS_ca_cert) << std::endl;
+  
   GetBidsRequest::GetBidsRawRequest get_bids_raw_request =
       GetBidsRawRequestFromInput(enable_debug_reporting,
                                  enable_unlimited_egress);
