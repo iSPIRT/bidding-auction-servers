@@ -13,19 +13,14 @@ python_deps()
 
 python_register_toolchains("//builders/bazel")
 
-#http_archive(
-#    name = "google_privacysandbox_servers_common",
-#    # 2025-02-11
-#    sha256 = "96ad94b628d009e229e2fd58d6cb117e29331e1e5bccc19fccf9634eb5943fe6",
-#    strip_prefix = "data-plane-shared-libraries-b442136d9cbe2872d8d55da95d176fd9a2d77b68",
-#    urls = [
-#        "https://github.com/privacysandbox/data-plane-shared-libraries/archive/b442136d9cbe2872d8d55da95d176fd9a2d77b68.zip",
-#    ],
-#)
-
-local_repository(
+http_archive(
     name = "google_privacysandbox_servers_common",
-    path = "third_party/data-plane-shared-libraries",
+    # 2025-02-11
+    sha256 = "96ad94b628d009e229e2fd58d6cb117e29331e1e5bccc19fccf9634eb5943fe6",
+    strip_prefix = "data-plane-shared-libraries-b442136d9cbe2872d8d55da95d176fd9a2d77b68",
+    urls = [
+        "https://github.com/privacysandbox/data-plane-shared-libraries/archive/b442136d9cbe2872d8d55da95d176fd9a2d77b68.zip",
+    ],
 )
 
 load(

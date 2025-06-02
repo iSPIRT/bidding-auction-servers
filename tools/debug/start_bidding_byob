@@ -25,7 +25,6 @@ else
   FETCH_MODE=2
 fi
 
-PS_VERBOSITY=40
 SERVER_START_CMD=$(cat << END
 /server/bin/server \
 --enable_bidding_service_benchmark="true" \
