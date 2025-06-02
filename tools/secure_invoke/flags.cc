@@ -28,7 +28,7 @@ ABSL_FLAG(std::string, json_input_str, "",
           "used to send request rather than loading it from an input file");
 
 ABSL_FLAG(std::string, op, "",
-          "The operation to be performed - invoke/encrypt.");
+          "The operation to be performed - invoke/encrypt/rest_invoke.");
 
 ABSL_FLAG(std::string, host_addr, "",
           "The address for the SellerFrontEnd server to be invoked.");
@@ -92,3 +92,13 @@ ABSL_FLAG(std::optional<bool>, enable_unlimited_egress, std::nullopt,
           "should be enabled");
 
 ABSL_FLAG(std::string, headers, "", "additional headers in key=value; format.");
+
+ABSL_FLAG(std::string, client_key, "",
+          "Client's private key required along with certificate in ");
+
+ABSL_FLAG(std::string, client_cert, "",
+          "client certificate to the server for client auth in mTLS");
+
+ABSL_FLAG(std::string, ca_cert, "",
+          "Optional ca_cert to verify server certificate in mTLS");
+
