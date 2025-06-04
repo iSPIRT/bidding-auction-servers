@@ -40,6 +40,7 @@ struct RequestOptions {
   std::string client_key;
   std::string client_cert;
   std::string ca_cert;
+  bool enable_verbose;
 };
 
 // Sends a request to SFE. The parameters used for the request are retrieved

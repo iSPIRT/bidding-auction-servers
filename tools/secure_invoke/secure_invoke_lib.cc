@@ -428,7 +428,49 @@ std::map<std::string, std::string> ParseHeaders(const std::string& input) {
   }
   return result;
 }
-
+// Debug call back to print TLS exchange
+static int curl_debug_callback(CURL *handle, curl_infotype type, char *data, size_t size, void *userptr) {
+  const char *type_name = "Unknown";
+  
+  switch (type) {
+    case CURLINFO_TEXT:
+      type_name = "Info";
+      break;
+    case CURLINFO_HEADER_IN:
+      type_name = "<= Recv header";
+      break;
+    case CURLINFO_HEADER_OUT:
+      type_name = "=> Send header";
+      break;
+    case CURLINFO_DATA_IN:
+      type_name = "<= Recv data";
+      break;
+    case CURLINFO_DATA_OUT:
+      type_name = "=> Send data";
+      break;
+    case CURLINFO_SSL_DATA_IN:
+      type_name = "<= Recv SSL data";
+      fprintf(stderr, "SSL IN [%zu bytes]:\n", size);
+      break;
+    case CURLINFO_SSL_DATA_OUT:
+      type_name = "=> Send SSL data";
+      fprintf(stderr, "SSL OUT [%zu bytes]:\n", size);
+      break;
+    default:
+      break;
+  }
+  
+  // Print SSL/TLS data with special handling
+  if (type == CURLINFO_SSL_DATA_IN || type == CURLINFO_SSL_DATA_OUT) {
+    // Just print the size for binary data
+    fprintf(stderr, "[%s] [%zu bytes of SSL data]\n", type_name, size);
+  } else {
+    // For text data, print the actual content
+    fprintf(stderr, "[%s] %.*s\n", type_name, (int)size, data);
+  }
+  
+  return 0;
+}
 // Function to send HTTPS request
 std::pair<CURLcode, std::string> SendHttpsRequest(
     const std::string& request_json) {
@@ -454,29 +496,31 @@ std::pair<CURLcode, std::string> SendHttpsRequest(
   request_options.ca_cert = absl::GetFlag(FLAGS_ca_cert);
   
   // Debug output to check flag values
-  std::cout << "DEBUG: Starting SendHttpsRequest with the following options:" << std::endl;
-  std::cout << "DEBUG: Host: " << request_options.host_addr << std::endl;
-  std::cout << "DEBUG: client key flag: '" << absl::GetFlag(FLAGS_client_key) << "'" << std::endl;
-  std::cout << "DEBUG: client cert flag: '" << absl::GetFlag(FLAGS_client_cert) << "'" << std::endl;
-  std::cout << "DEBUG: CA cert flag: '" << absl::GetFlag(FLAGS_ca_cert) << "'" << std::endl;
-  std::cout << "DEBUG: Insecure mode: " << (request_options.insecure ? "true" : "false") << std::endl;
+  if(absl::GetFlag(FLAGS_enable_verbose)) {
+    std::cout << "Starting SendHttpsRequest with the following options:" << std::endl;
+    std::cout << "Host: " << request_options.host_addr << std::endl;
+    std::cout << "client key flag: '" << absl::GetFlag(FLAGS_client_key) << "'" << std::endl;
+    std::cout << "client cert flag: '" << absl::GetFlag(FLAGS_client_cert) << "'" << std::endl;
+    std::cout << "CA cert flag: '" << absl::GetFlag(FLAGS_ca_cert) << "'" << std::endl;
+    std::cout << "Insecure mode: " << (request_options.insecure ? "true" : "false") << std::endl;
+    std::cout << "Client IP: " << request_options.client_ip << std::endl;
+    std::cout << "User Agent: " << request_options.user_agent << std::endl;
+    std::cout << "Accept Language: " << request_options.accept_language << std::endl;
+    std::cout << "Headers: " << request_options.headers << std::endl;
+  }
 
   if (request_options.host_addr.empty()) {
     return {CURLE_URL_MALFORMAT, "BFE host address must be specified"};
   }
-
   if (request_options.client_ip.empty()) {
     return {CURLE_BAD_FUNCTION_ARGUMENT, "Client IP must be specified"};
   }
-
   if (request_options.user_agent.empty()) {
     return {CURLE_BAD_FUNCTION_ARGUMENT, "User Agent must be specified"};
   }
-
   if (request_options.accept_language.empty()) {
     return {CURLE_BAD_FUNCTION_ARGUMENT, "Accept Language must be specified"};
   }
-
   // Add headers (e.g., Content-Type)
   headers = curl_slist_append(headers, "Content-Type: application/json");
   headers = curl_slist_append(
@@ -493,12 +537,8 @@ std::pair<CURLcode, std::string> SendHttpsRequest(
       headers = curl_slist_append(headers, (key + ": " + value).c_str());
     }
   }
-
   curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-
-  // Set the URL
   curl_easy_setopt(curl, CURLOPT_URL, request_options.host_addr.c_str());
-
   // Set the client certificate and key if provided
   if (request_options.client_key.empty() !=
       request_options.client_cert.empty()) {
@@ -508,32 +548,25 @@ std::pair<CURLcode, std::string> SendHttpsRequest(
   
   if (!request_options.client_key.empty() && 
       !request_options.client_cert.empty()) {
-
     curl_easy_setopt(curl, CURLOPT_SSLKEY,
                      request_options.client_key.c_str());
     curl_easy_setopt(curl, CURLOPT_SSLCERT,
-                     request_options.client_cert.c_str());
-                     
-    std::cout << "DEBUG: client key and cert settings applied to CURL" << std::endl;
+                     request_options.client_cert.c_str());            
+    std::cout << "client key and cert settings applied to CURL" << std::endl;
   } else {
-    std::cout << "DEBUG: Not using client (empty key or cert)" << std::endl;
-  }
-  LOG(INFO) << "Using CA cert: " << request_options.ca_cert;
+    std::cout << "Not using client key or cert" << std::endl;
+  }  
   if (!request_options.ca_cert.empty()) {
     curl_easy_setopt(curl, CURLOPT_CAINFO,
                      request_options.ca_cert.c_str());
+    LOG(INFO) << "Using CA cert: " << request_options.ca_cert;
   }
   // Set HTTPS POST method
   curl_easy_setopt(curl, CURLOPT_POST, 1L);
-
-  // Set verbose output for debugging (optional)
-  curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
-
-  curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
-
+  // Enable detailed SSL trace
+  curl_easy_setopt(curl, CURLOPT_CERTINFO, 1L);
   // Set the request payload
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_json.c_str());
-
+   curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_json.c_str());
   // Add insecure flag if specified
   if (request_options.insecure) {
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER,
@@ -541,13 +574,21 @@ std::pair<CURLcode, std::string> SendHttpsRequest(
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST,
                      0L);  // Disable host verification
   }
-  // Enable verbose output for debugging (optional)
-  curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
-
   // Set the callback function to capture the response
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-
+  // Enable the debug callback
+  if (absl::GetFlag(FLAGS_enable_verbose)) {
+    std::cout << "Enabling cURL debug callback" << std::endl;
+    // Set verbose output for debugging (optional)
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+    // Set the debug callback function
+    curl_easy_setopt(curl, CURLOPT_DEBUGFUNCTION, curl_debug_callback);
+    curl_easy_setopt(curl, CURLOPT_DEBUGDATA, NULL);
+    std::cout << "Enabling cURL debug callback" << std::endl;
+  } else {
+    std::cout << "cURL debug callback is disabled" << std::endl;
+  }
   // Perform the request
   res = curl_easy_perform(curl);
 
@@ -572,14 +613,7 @@ std::string DecryptResponse(
 absl::Status SendHttpRequestToBfe(
     const HpkeKeyset& keyset, std::optional<bool> enable_debug_reporting,
     std::unique_ptr<BuyerFrontEnd::StubInterface> stub,
-    std::optional<bool> enable_unlimited_egress) {
-  std::cout << "DEBUG: Entering SendHttpRequestToBfe - REST API implementation" << std::endl;
-  std::cout << "DEBUG: Current flags:" << std::endl;
-  std::cout << "DEBUG: OPERATION: " << absl::GetFlag(FLAGS_op) << std::endl;
-  std::cout << "DEBUG: client key: " << absl::GetFlag(FLAGS_client_key) << std::endl;
-  std::cout << "DEBUG: client cert: " << absl::GetFlag(FLAGS_client_cert) << std::endl;
-  std::cout << "DEBUG: CA cert: " << absl::GetFlag(FLAGS_ca_cert) << std::endl;
-  
+    std::optional<bool> enable_unlimited_egress) {  
   GetBidsRequest::GetBidsRawRequest get_bids_raw_request =
       GetBidsRawRequestFromInput(enable_debug_reporting,
                                  enable_unlimited_egress);
@@ -599,6 +633,8 @@ absl::Status SendHttpRequestToBfe(
 
   std::cout << "insider rest_invoke " << get_bids_request_json << std::endl;
   auto [result, response] = SendHttpsRequest(get_bids_request_json);
+  std::cout << "Response from HTTPS request: " << response
+            << std::endl;  // Print the response message
   if (result != CURLE_OK) {
     LOG(ERROR) << "HTTPS request failed: " << curl_easy_strerror(result);
   } else {

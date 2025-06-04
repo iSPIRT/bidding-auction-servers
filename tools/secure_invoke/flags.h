@@ -46,5 +46,6 @@ ABSL_DECLARE_FLAG(std::string, headers);
 ABSL_DECLARE_FLAG(std::string, client_key);
 ABSL_DECLARE_FLAG(std::string, client_cert);
 ABSL_DECLARE_FLAG(std::string, ca_cert);
+ABSL_DECLARE_FLAG(bool, enable_verbose);
 
 #endif  // TOOLS_SECURE_INVOKE_FLAGS_H_

@@ -100,6 +100,11 @@ fi
 # echo "Arguments to be passed to secure_invoke: $ARGS"
 echo "print all args here: $ARGS"
 
+if [ -n "${ENABLE_VERBOSE}" ]; then
+  # If ENABLE_CURL_DEBUG is set, add the debug flag
+  ARGS="$ARGS -enable_verbose=${ENABLE_VERBOSE}"
+fi
+
 # Set number of retries if specified
 if [ -n "${RETRIES}" ]; then
   i=1

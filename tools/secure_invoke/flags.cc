@@ -102,3 +102,6 @@ ABSL_FLAG(std::string, client_cert, "",
 ABSL_FLAG(std::string, ca_cert, "",
           "Optional ca_cert to verify server certificate in mTLS");
 
+ABSL_FLAG(bool, enable_verbose, false,
+          "Enable cURL debug output for TLS exchange. ");
+
