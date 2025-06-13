@@ -87,6 +87,24 @@ if [ -n "${HEADERS}" ]; then
   ARGS="$ARGS -headers=${HEADERS}"
 fi
 
+# Add cacert, client_cert, and client_key if they are set
+if [ -n "${CLIENT_KEY}" ]; then
+  ARGS="$ARGS -client_key=${CLIENT_KEY}"
+fi
+if [ -n "${CLIENT_CERT}" ]; then
+  ARGS="$ARGS -client_cert=${CLIENT_CERT}"
+fi
+if [ -n "${CA_CERT}" ]; then
+  ARGS="$ARGS -ca_cert=${CA_CERT}"
+fi
+# echo "Arguments to be passed to secure_invoke: $ARGS"
+echo "print all args here: $ARGS"
+
+if [ -n "${ENABLE_VERBOSE}" ]; then
+  # If ENABLE_CURL_DEBUG is set, add the debug flag
+  ARGS="$ARGS -enable_verbose=${ENABLE_VERBOSE}"
+fi
+
 # Set number of retries if specified
 if [ -n "${RETRIES}" ]; then
   i=1
