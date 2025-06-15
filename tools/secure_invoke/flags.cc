@@ -28,7 +28,7 @@ ABSL_FLAG(std::string, json_input_str, "",
           "used to send request rather than loading it from an input file");
 
 ABSL_FLAG(std::string, op, "",
-          "The operation to be performed - invoke/encrypt.");
+          "The operation to be performed - invoke/encrypt/rest_invoke.");
 
 ABSL_FLAG(std::string, host_addr, "",
           "The address for the SellerFrontEnd server to be invoked.");
@@ -92,3 +92,39 @@ ABSL_FLAG(std::optional<bool>, enable_unlimited_egress, std::nullopt,
           "should be enabled");
 
 ABSL_FLAG(std::string, headers, "", "additional headers in key=value; format.");
+
+ABSL_FLAG(std::string, client_key, "",
+          "Client's private key required along with certificate in ");
+
+ABSL_FLAG(std::string, client_cert, "",
+          "client certificate to the server for client auth in mTLS");
+
+ABSL_FLAG(std::string, ca_cert, "",
+          "Optional ca_cert to verify server certificate in mTLS");
+
+ABSL_FLAG(bool, enable_verbose, false,
+          "Enable cURL debug output for TLS exchange. ");
+
+ABSL_FLAG(std::string, batch_file, "",
+          "Path to the batch file containing multiple requests in JSONL format. "
+          "Each line should contain a JSON object with 'id' and 'json_request' "
+          "fields. The 'id' is an integer identifier for the request, and "
+          "'json_request' is the actual request in JSON format.");
+ABSL_FLAG(int, max_retries, 3,
+          "Maximum number of retries for each request in batch processing. "
+          "Defaults to 3.");
+ABSL_FLAG(int, max_concurrent_requests, 5,
+          "Maximum number of concurrent requests in batch processing. "
+          "Defaults to 5.");
+ABSL_FLAG(int, retry_delay_ms, 500,
+          "Delay in milliseconds between retries for each request in batch "
+          "processing. Defaults to 500 ms.");
+ABSL_FLAG(std::string, failure_log_path, "failure_log.jsonl",
+          "Path to the log file where failures will be recorded in JSONL format. "
+          "Each line will contain a JSON object with 'id', 'status', and 'attempts' "
+          "fields.");
+ABSL_FLAG(std::string, success_log_path, "success_log.jsonl",
+          "Path to the log file where successful responses will be recorded in "
+          "JSONL format. Each line will contain a JSON object with 'id', 'attempts', "
+          "'raw_json_response' fields.");
+

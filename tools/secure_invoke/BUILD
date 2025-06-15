@@ -24,8 +24,8 @@ package(
 cc_library(
     name = "secure_invoke_lib",
     testonly = True,
-    srcs = ["secure_invoke_lib.cc"],
-    hdrs = ["secure_invoke_lib.h"],
+    srcs = ["secure_invoke_lib.cc", "secure_invoke_batch.cc"],
+    hdrs = ["secure_invoke_lib.h", "secure_invoke_batch.h"],
     deps = [
         ":flags",
         "//api:bidding_auction_servers_cc_grpc_proto",

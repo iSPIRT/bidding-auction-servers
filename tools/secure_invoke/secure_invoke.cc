@@ -28,6 +28,7 @@
 #include "tools/secure_invoke/flags.h"
 #include "tools/secure_invoke/payload_generator/payload_packaging.h"
 #include "tools/secure_invoke/secure_invoke_lib.h"
+#include "tools/secure_invoke/secure_invoke_batch.h"
 
 constexpr absl::string_view kAndroidClientType = "CLIENT_TYPE_ANDROID";
 constexpr char kSfe[] = "SFE";
@@ -140,7 +141,40 @@ int main(int argc, char** argv) {
     } else {
       LOG(FATAL) << "Unsupported target service: " << target_service;
     }
-  } else {
+  } else if (op == "batch_invoke") {
+    // Get batch processing parameters from flags
+    std::string batch_file = absl::GetFlag(FLAGS_batch_file);
+    if (batch_file.empty()) {
+      LOG(FATAL) << "Please specify --input_file for batch processing";
+    }
+    int max_retries = absl::GetFlag(FLAGS_max_retries);
+    int max_concurrent_requests = absl::GetFlag(FLAGS_max_concurrent_requests);
+    int retry_delay_ms = absl::GetFlag(FLAGS_retry_delay_ms);
+    std::string failure_log_path = absl::GetFlag(FLAGS_failure_log_path);
+    std::string success_log_path = absl::GetFlag(FLAGS_success_log_path);
+
+    LOG(INFO) << "Starting batch request processing from file: " << batch_file;
+    LOG(INFO) << "Max retries: " << max_retries << ", Max concurrent_requests: " << max_concurrent_requests;
+    
+    // Initialize the BatchRequestProcessor
+    privacy_sandbox::bidding_auction_servers::BatchRequestProcessor processor(
+        batch_file,
+        max_retries,
+        max_concurrent_requests,
+        retry_delay_ms,
+        failure_log_path,
+        success_log_path,
+        keyset, 
+        enable_debug_reporting,
+        enable_unlimited_egress);
+    
+    // Run the batch processor
+    auto status = processor.Run();
+    CHECK(status.ok()) << status;
+    
+    LOG(INFO) << "Batch processing completed successfully";
+  }  
+  else {
     LOG(FATAL) << "Unsupported operation.";
   }
   return 0;
