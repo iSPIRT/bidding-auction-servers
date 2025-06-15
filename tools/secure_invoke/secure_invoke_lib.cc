@@ -459,7 +459,6 @@ static int curl_debug_callback(CURL *handle, curl_infotype type, char *data, siz
     default:
       break;
   }
-  
   // Print SSL/TLS data with special handling
   if (type == CURLINFO_SSL_DATA_IN || type == CURLINFO_SSL_DATA_OUT) {
     // Just print the size for binary data
@@ -468,22 +467,88 @@ static int curl_debug_callback(CURL *handle, curl_infotype type, char *data, siz
     // For text data, print the actual content
     fprintf(stderr, "[%s] %.*s\n", type_name, (int)size, data);
   }
-  
   return 0;
 }
-// Function to send HTTPS request
-std::pair<CURLcode, std::string> SendHttpsRequest(
+// New helper function to initialize CURL with common settings
+std::pair<CURL*, struct curl_slist*> CurlInitialize(
+    const RequestOptions& request_options,
     const std::string& request_json) {
+  
   CURL* curl = curl_easy_init();  // Initialize cURL
   if (!curl) {
     LOG(FATAL) << "Failed to initialize cURL.";
-    return {CURLE_FAILED_INIT, ""};
+    return {nullptr, nullptr};
   }
-
-  CURLcode res;
   struct curl_slist* headers = nullptr;
-  std::string response;  // To store the response body
+  // Add standard headers to headers list
+  headers = curl_slist_append(headers, "Content-Type: application/json");
+  headers = curl_slist_append(
+      headers, ("x-bna-client-ip: " + request_options.client_ip).c_str());
+  headers = curl_slist_append(
+      headers, ("x-user-agent: " + request_options.user_agent).c_str());
+  headers = curl_slist_append(
+      headers,
+      ("x-accept-language: " + request_options.accept_language).c_str());
+  // Add custom headers if provided to headers list
+  if (!request_options.headers.empty()) {
+    auto parsed_headers = ParseHeaders(request_options.headers);
+    for (const auto& [key, value] : parsed_headers) {
+      headers = curl_slist_append(headers, (key + ": " + value).c_str());
+    }
+  }
+  // Set headers and URL
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(curl, CURLOPT_URL, request_options.host_addr.c_str());
+  // Set request parameters
+  curl_easy_setopt(curl, CURLOPT_POST, 1L);
+  // Set request timeout in seconds
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
 
+  
+  // Set mTLS certificate and key if provided
+  if (request_options.client_key.empty() !=
+      request_options.client_cert.empty()) {
+    LOG(ERROR) << "Both client_cert and client_key must be provided or neither.";
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    return {nullptr, nullptr};
+  }
+  // Set client key and cert if provided
+  if (!request_options.client_key.empty() && 
+      !request_options.client_cert.empty()) {
+    curl_easy_setopt(curl, CURLOPT_SSLKEY,
+                     request_options.client_key.c_str());
+    curl_easy_setopt(curl, CURLOPT_SSLCERT,
+                     request_options.client_cert.c_str());            
+    LOG(INFO) << "Client key and cert settings applied to CURL";
+  } else {
+    LOG(INFO) << "Not using client key or cert";
+  }
+  // Set CA certificate if provided
+  if (!request_options.ca_cert.empty()) {
+    curl_easy_setopt(curl, CURLOPT_CAINFO,
+                     request_options.ca_cert.c_str());
+    LOG(INFO) << "Using CA cert: " << request_options.ca_cert;
+  }
+  // Configure SSL security
+  if (request_options.insecure) {
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    LOG(WARNING) << "SSL verification disabled, security may be compromised";
+  }
+  // Enable debugging if requested
+  if (absl::GetFlag(FLAGS_enable_verbose)) {
+    LOG(INFO) << "Enabling cURL debug callback";
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+    curl_easy_setopt(curl, CURLOPT_DEBUGFUNCTION, curl_debug_callback);
+    curl_easy_setopt(curl, CURLOPT_DEBUGDATA, NULL);
+    curl_easy_setopt(curl, CURLOPT_CERTINFO, 1L); // Enable detailed SSL trace
+  }
+  return {curl, headers};
+}
+
+// New helper function to create RequestOptions from flags
+RequestOptions CreateRequestOptionsFromFlags() {
   privacy_sandbox::bidding_auction_servers::RequestOptions request_options;
   request_options.host_addr = absl::GetFlag(FLAGS_host_addr);
   request_options.client_ip = absl::GetFlag(FLAGS_client_ip);
@@ -494,104 +559,45 @@ std::pair<CURLcode, std::string> SendHttpsRequest(
   request_options.client_key = absl::GetFlag(FLAGS_client_key);
   request_options.client_cert = absl::GetFlag(FLAGS_client_cert);
   request_options.ca_cert = absl::GetFlag(FLAGS_ca_cert);
-  
+  // Validate request options (moved from CurlInitialize)
+  CHECK(!request_options.host_addr.empty()) << "Host address must be specified";
+  CHECK(!request_options.client_ip.empty()) << "Client IP must be specified";
+  CHECK(!request_options.user_agent.empty()) << "User Agent must be specified";
+  CHECK(!request_options.accept_language.empty()) << "Accept Language must be specified";
+  // mTLS validation
+  CHECK(request_options.client_key.empty() == request_options.client_cert.empty())
+      << "Both client_cert and client_key must be provided or neither.";
   // Debug output to check flag values
   if(absl::GetFlag(FLAGS_enable_verbose)) {
-    std::cout << "Starting SendHttpsRequest with the following options:" << std::endl;
-    std::cout << "Host: " << request_options.host_addr << std::endl;
-    std::cout << "client key flag: '" << absl::GetFlag(FLAGS_client_key) << "'" << std::endl;
-    std::cout << "client cert flag: '" << absl::GetFlag(FLAGS_client_cert) << "'" << std::endl;
-    std::cout << "CA cert flag: '" << absl::GetFlag(FLAGS_ca_cert) << "'" << std::endl;
-    std::cout << "Insecure mode: " << (request_options.insecure ? "true" : "false") << std::endl;
-    std::cout << "Client IP: " << request_options.client_ip << std::endl;
-    std::cout << "User Agent: " << request_options.user_agent << std::endl;
-    std::cout << "Accept Language: " << request_options.accept_language << std::endl;
-    std::cout << "Headers: " << request_options.headers << std::endl;
+    LOG(INFO) << "Created RequestOptions with the following values:";
+    LOG(INFO) << "Host: " << request_options.host_addr;
+    LOG(INFO) << "client key: '" << request_options.client_key << "'";
+    LOG(INFO) << "client cert: '" << request_options.client_cert << "'";
+    LOG(INFO) << "CA cert: '" << request_options.ca_cert << "'";
+    LOG(INFO) << "Insecure mode: " << (request_options.insecure ? "true" : "false");
+    LOG(INFO) << "Client IP: " << request_options.client_ip;
+    LOG(INFO) << "User Agent: " << request_options.user_agent;
+    LOG(INFO) << "Accept Language: " << request_options.accept_language;
+    LOG(INFO) << "Headers: " << request_options.headers;
   }
-
-  if (request_options.host_addr.empty()) {
-    return {CURLE_URL_MALFORMAT, "BFE host address must be specified"};
+  return request_options;
+}
+// Function to send HTTPS request
+std::pair<CURLcode, std::string> SendHttpsRequest(
+    const std::string& request_json,
+    const RequestOptions& request_options) {
+  // Initialize curl with common settings
+  auto [curl, headers] = CurlInitialize(request_options, request_json);
+  if (!curl) {
+    return {CURLE_FAILED_INIT, "Failed to initialize cURL"};
   }
-  if (request_options.client_ip.empty()) {
-    return {CURLE_BAD_FUNCTION_ARGUMENT, "Client IP must be specified"};
-  }
-  if (request_options.user_agent.empty()) {
-    return {CURLE_BAD_FUNCTION_ARGUMENT, "User Agent must be specified"};
-  }
-  if (request_options.accept_language.empty()) {
-    return {CURLE_BAD_FUNCTION_ARGUMENT, "Accept Language must be specified"};
-  }
-  // Add headers (e.g., Content-Type)
-  headers = curl_slist_append(headers, "Content-Type: application/json");
-  headers = curl_slist_append(
-      headers, ("x-bna-client-ip: " + request_options.client_ip).c_str());
-  headers = curl_slist_append(
-      headers, ("x-user-agent: " + request_options.user_agent).c_str());
-  headers = curl_slist_append(
-      headers,
-      ("x-accept-language: " + request_options.accept_language).c_str());
-
-  if (!request_options.headers.empty()) {
-    auto parsed_headers = ParseHeaders(request_options.headers);
-    for (const auto& [key, value] : parsed_headers) {
-      headers = curl_slist_append(headers, (key + ": " + value).c_str());
-    }
-  }
-  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-  curl_easy_setopt(curl, CURLOPT_URL, request_options.host_addr.c_str());
-  // Set the client certificate and key if provided
-  if (request_options.client_key.empty() !=
-      request_options.client_cert.empty()) {
-    return {CURLE_BAD_FUNCTION_ARGUMENT,
-            "Both client_cert and client_key must be provided or neither."};
-  }
-  
-  if (!request_options.client_key.empty() && 
-      !request_options.client_cert.empty()) {
-    curl_easy_setopt(curl, CURLOPT_SSLKEY,
-                     request_options.client_key.c_str());
-    curl_easy_setopt(curl, CURLOPT_SSLCERT,
-                     request_options.client_cert.c_str());            
-    std::cout << "client key and cert settings applied to CURL" << std::endl;
-  } else {
-    std::cout << "Not using client key or cert" << std::endl;
-  }  
-  if (!request_options.ca_cert.empty()) {
-    curl_easy_setopt(curl, CURLOPT_CAINFO,
-                     request_options.ca_cert.c_str());
-    LOG(INFO) << "Using CA cert: " << request_options.ca_cert;
-  }
-  // Set HTTPS POST method
-  curl_easy_setopt(curl, CURLOPT_POST, 1L);
-  // Enable detailed SSL trace
-  curl_easy_setopt(curl, CURLOPT_CERTINFO, 1L);
-  // Set the request payload
-   curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_json.c_str());
-  // Add insecure flag if specified
-  if (request_options.insecure) {
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER,
-                     0L);  // Disable peer verification
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST,
-                     0L);  // Disable host verification
-  }
-  // Set the callback function to capture the response
+  // Prepare for response
+  std::string response;
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_json.c_str());
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-  // Enable the debug callback
-  if (absl::GetFlag(FLAGS_enable_verbose)) {
-    std::cout << "Enabling cURL debug callback" << std::endl;
-    // Set verbose output for debugging (optional)
-    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
-    // Set the debug callback function
-    curl_easy_setopt(curl, CURLOPT_DEBUGFUNCTION, curl_debug_callback);
-    curl_easy_setopt(curl, CURLOPT_DEBUGDATA, NULL);
-    std::cout << "Enabling cURL debug callback" << std::endl;
-  } else {
-    std::cout << "cURL debug callback is disabled" << std::endl;
-  }
   // Perform the request
-  res = curl_easy_perform(curl);
-
+  CURLcode res = curl_easy_perform(curl);
   // Cleanup
   curl_slist_free_all(headers);
   curl_easy_cleanup(curl);
@@ -599,24 +605,10 @@ std::pair<CURLcode, std::string> SendHttpsRequest(
   return {res, response};
 }
 
-std::string DecryptResponse(
-    std::unique_ptr<CryptoClientWrapperInterface>& crypto_client,
-    const std::string& response, std::string& secret) {
-  absl::StatusOr<google::cmrt::sdk::crypto_service::v1::AeadDecryptResponse>
-      decrypt_response = crypto_client->AeadDecrypt(response, secret);
-  CHECK(decrypt_response.ok()) << decrypt_response.status();
-  std::string decrypted_payload =
-      std::move(*decrypt_response->mutable_payload());
-  return decrypted_payload;
-}
-
-absl::Status SendHttpRequestToBfe(
-    const HpkeKeyset& keyset, std::optional<bool> enable_debug_reporting,
-    std::unique_ptr<BuyerFrontEnd::StubInterface> stub,
-    std::optional<bool> enable_unlimited_egress) {  
-  GetBidsRequest::GetBidsRawRequest get_bids_raw_request =
-      GetBidsRawRequestFromInput(enable_debug_reporting,
-                                 enable_unlimited_egress);
+// New helper function to generate the JSON request for BFE
+std::pair<std::string, std::string> GenerateGetBidsRequestJson(
+    const HpkeKeyset& keyset,
+    const GetBidsRequest::GetBidsRawRequest& get_bids_raw_request) {
   auto key_fetcher_manager =
       std::make_unique<server_common::FakeKeyFetcherManager>(
           keyset.public_key, "unused", std::to_string(keyset.key_id));
@@ -628,44 +620,124 @@ absl::Status SendHttpRequestToBfe(
   std::string get_bids_request_json;
   auto get_bids_request_json_status =
       google::protobuf::util::MessageToJsonString(*secret_request->second,
-                                                  &get_bids_request_json);
+                                                 &get_bids_request_json);
   CHECK(get_bids_request_json_status.ok()) << get_bids_request_json_status;
+  // Return both the secret and the JSON request
+  return {get_bids_request_json, secret_request->first};
+}
 
+std::string DecryptResponse(
+    std::unique_ptr<CryptoClientWrapperInterface>& crypto_client,
+    const std::string& response, const std::string& secret) {
+  absl::StatusOr<google::cmrt::sdk::crypto_service::v1::AeadDecryptResponse>
+      decrypt_response = crypto_client->AeadDecrypt(response, secret);
+  CHECK(decrypt_response.ok()) << decrypt_response.status();
+  std::string decrypted_payload =
+      std::move(*decrypt_response->mutable_payload());
+  return decrypted_payload;
+}
+
+// New helper function to process the HTTP response with better error handling
+absl::StatusOr<std::string> ProcessResponse(
+    const std::string& response,
+    std::unique_ptr<CryptoClientWrapperInterface>& crypto_client,
+    const std::string& secret) {
+  // Parse response JSON
+  json response_json;
+  try {
+    response_json = json::parse(response);
+  } catch (const json::parse_error& e) {
+    LOG(ERROR) << "Failed to parse response JSON: " << e.what();
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to parse response JSON: ", e.what()));
+  }
+  // Extract response ciphertext
+  std::string response_ciphertext;
+  try {
+    response_ciphertext = response_json.at("responseCiphertext").get<std::string>();
+  } catch (const json::exception& e) {
+    LOG(ERROR) << "Failed to extract responseCiphertext from response: " << e.what();
+    return absl::InvalidArgumentError("Response missing 'responseCiphertext' field");
+  }
+  // Decode the base64 ciphertext
+  std::string decoded_ciphertext;
+  if (!Base64Decode(response_ciphertext, decoded_ciphertext)) {
+    LOG(ERROR) << "Failed to decode base64 response ciphertext";
+    return absl::InvalidArgumentError("Failed to decode base64 response ciphertext");
+  }
+  if (absl::GetFlag(FLAGS_enable_verbose)) {
+    LOG(INFO) << "Response ciphertext length: " << response_ciphertext.size();
+  }
+  // Decrypt the response
+  PS_VLOG(6) << "Decrypting the response...";
+  std::string decrypt_response;
+  try {
+    decrypt_response = DecryptResponse(crypto_client, decoded_ciphertext, secret);
+  } catch (const std::exception& e) {
+    LOG(ERROR) << "Decryption failed: " << e.what();
+    return absl::InternalError(absl::StrCat("Decryption failed: ", e.what()));
+  }
+  // Parse the decrypted response into the proto
+  auto raw_response = std::make_unique<GetBidsResponse::GetBidsRawResponse>();
+  if (!raw_response->ParseFromString(decrypt_response)) {
+    LOG(ERROR) << "Failed to parse proto from decrypted response";
+    return absl::InvalidArgumentError(
+        "Failed to parse GetBidsRawResponse proto from decrypted response");
+  }
+  LOG(INFO) << "Decryption/decoding of response succeeded";
+  if (absl::GetFlag(FLAGS_enable_verbose)) {
+    LOG(INFO) << "Response details: " << raw_response->DebugString();
+  }
+  // Convert proto to JSON string since we need to return a string
+  std::string json_output;
+  auto json_status = google::protobuf::util::MessageToJsonString(
+      *raw_response, &json_output);
+  if (!json_status.ok()) {
+    LOG(ERROR) << "Failed to convert proto to JSON: " << json_status.message();
+    return absl::InternalError("Failed to convert proto to JSON");
+  }
+  LOG(INFO) << "Decryption/decoding of response succeeded";
+  if (absl::GetFlag(FLAGS_enable_verbose)) {
+    LOG(INFO) << "Response details: " << raw_response->DebugString();
+  }
+  // Return the JSON string instead of the proto object
+  return json_output;
+}
+
+absl::Status SendHttpRequestToBfe(
+    const HpkeKeyset& keyset, std::optional<bool> enable_debug_reporting,
+    std::unique_ptr<BuyerFrontEnd::StubInterface> stub,
+    std::optional<bool> enable_unlimited_egress) {  
+  GetBidsRequest::GetBidsRawRequest get_bids_raw_request =
+      GetBidsRawRequestFromInput(enable_debug_reporting,
+                                 enable_unlimited_egress);
+  // Generate the JSON request and get the secret
+  auto [get_bids_request_json, secret]= GenerateGetBidsRequestJson(
+      keyset, get_bids_raw_request);
   std::cout << "insider rest_invoke " << get_bids_request_json << std::endl;
-  auto [result, response] = SendHttpsRequest(get_bids_request_json);
+  // Get request options from flags - moved from SendHttpsRequest
+  RequestOptions request_options = CreateRequestOptionsFromFlags();
+  // Send the HTTPS request
+  auto [result, response] = SendHttpsRequest(get_bids_request_json,request_options);
   std::cout << "Response from HTTPS request: " << response
             << std::endl;  // Print the response message
   if (result != CURLE_OK) {
     LOG(ERROR) << "HTTPS request failed: " << curl_easy_strerror(result);
-  } else {
-    LOG(INFO) << "HTTPS request completed successfully.";
-    std::cout << "Response: " << response
-              << std::endl;  // Print the response message
+    return absl::UnavailableError(curl_easy_strerror(result));
+  } 
+  LOG(INFO) << "HTTPS request completed successfully.";
+  // Process the response using the new function
+  auto crypto_client = CreateCryptoClient();
+  auto raw_response_or = ProcessResponse(response, crypto_client, secret);
+  if (!raw_response_or.ok()) {
+    LOG(ERROR) << "Failed to process response: " << raw_response_or.status();
+    return raw_response_or.status();
   }
+  auto& raw_response = raw_response_or.value();
+  LOG(INFO) << "Successfully processed response with " << raw_response
+            << std::endl;
+  return absl::OkStatus();
 
-  json response_json = json::parse(response);
-  std::string response_ciphertext =
-      response_json.at("responseCiphertext").get<std::string>();
-  std::string decoded_ciphertext;
-  Base64Decode(response_ciphertext, decoded_ciphertext);
-  std::cout << "Response ciphertext: " << response_ciphertext << std::endl;
-  PS_VLOG(6) << "Decrypting the response ...";
-  auto decrypt_response =
-      DecryptResponse(crypto_client, decoded_ciphertext, secret_request->first);
-  std::cout << "Response " << decrypt_response;
-
-  std::unique_ptr<GetBidsResponse::GetBidsRawResponse> raw_response =
-      std::make_unique<GetBidsResponse::GetBidsRawResponse>();
-
-  if (!raw_response->ParseFromString(decrypt_response)) {
-    std::cout << "Failed to parse proto from decrypted response";
-  }
-
-  std::cout << "Decryption/decoding of response succeeded: "
-            << raw_response->DebugString();
-
-  absl::Status status = absl::OkStatus();
-  return status;
 }
 
 }  // namespace privacy_sandbox::bidding_auction_servers

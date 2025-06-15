@@ -59,19 +59,13 @@ if [ -n "${KMS_HOST}" ]; then
   else
     echo "Warning: Failed to fetch public keys from ${KMS_HOST}"
   fi
-
   # Also add KMS host as an argument if needed by the binary
   #ARGS="$ARGS -kms_host=${KMS_HOST}"
 fi
 
 # Add request path
 if [ -n "${REQUEST_PATH}" ]; then
-  ARGS="$ARGS -input_file=/${REQUEST_PATH}"
-fi
-
-# Add operation type if needed
-if [ -n "${OPERATION}" ]; then
-  ARGS="$ARGS -op=${OPERATION}"
+  ARGS="$ARGS -input_file=${REQUEST_PATH}"
 fi
 
 # Add fixed client IP (could be configurable as well)
@@ -105,20 +99,43 @@ if [ -n "${ENABLE_VERBOSE}" ]; then
   ARGS="$ARGS -enable_verbose=${ENABLE_VERBOSE}"
 fi
 
-# Set number of retries if specified
-if [ -n "${RETRIES}" ]; then
-  i=1
-  while [ $i -le ${RETRIES} ]; do
-    echo "Running attempt $i of ${RETRIES}..."
-    # Execute the command with all arguments
-    echo "Executing: /secure_invoke/invoke $ARGS $@"
-    exec /secure_invoke/invoke $ARGS "$@"
-    # Add a small delay between retries
-    [ $i -lt ${RETRIES} ] && sleep 1
-    i=$((i + 1))
-  done
-else
-  # No retries, just run once
+# Add operation type if needed
+if [ -n "${OPERATION}" ]; then
+  ARGS="$ARGS -op=${OPERATION}"
+fi
+# If operation is batch_invoke, handle batch processing
+if [ "${OPERATION}" = "batch_invoke" ]; then
+
+  ARGS="$ARGS -batch_file=${REQUEST_PATH}"
+  # Extract directory from BATCH_FILE to store success and failure logs
+  BATCH_FILE_DIR=$(dirname "${REQUEST_PATH}")
+  ARGS="$ARGS -max_concurrent_requests=${MAX_CONCURRENT_REQUESTS:-5}"
+  ARGS="$ARGS -max_retries=${MAX_RETRIES:-3}"
+  ARGS="$ARGS -retry_delay_ms=${RETRY_DELAY_MS:-500}"
+  # Set paths for success and failure logs
+  ARGS="$ARGS -failure_log_path=${BATCH_FILE_DIR}/failure_log.jsonl"
+  ARGS="$ARGS -success_log_path=${BATCH_FILE_DIR}/success_log.jsonl"
+  echo "Failure log path: ${BATCH_FILE_DIR}/failure_log.jsonl"
+  echo "Success log path: ${BATCH_FILE_DIR}/success_log.jsonl"
   echo "Executing: /secure_invoke/invoke $ARGS $@"
   exec /secure_invoke/invoke $ARGS "$@"
+# Single request handling
+else
+  # Set number of retries if provided
+  if [ -n "${RETRIES}" ]; then
+    i=1
+    while [ $i -le ${RETRIES} ]; do
+      echo "Running attempt $i of ${RETRIES}..."
+      # Execute the command with all arguments
+      echo "Executing: /secure_invoke/invoke $ARGS $@"
+      exec /secure_invoke/invoke $ARGS "$@"
+      # Add a small delay between retries
+      [ $i -lt ${RETRIES} ] && sleep 1
+      i=$((i + 1))
+    done
+  else
+    # No retries, just run once
+    echo "Executing: /secure_invoke/invoke $ARGS $@"
+    exec /secure_invoke/invoke $ARGS "$@"
+  fi
 fi
