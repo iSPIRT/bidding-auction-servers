@@ -1,0 +1,270 @@
+---
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: CI/CD Pipeline for Azure Container Registry
+
+"on":
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+
+env:
+  # Azure Container Registry settings
+  REGISTRY: ${{ vars.AZURE_REGISTRY_NAME || 'biddingauction' }}.azurecr.io
+  # Build configuration - use GCP platform as it has Docker image support
+  BUILD_FLAVOR: prod
+  INSTANCE: gcp
+  PLATFORM: gcp
+  # Services to build
+  SERVICES: >-
+    auction_service bidding_service buyer_frontend_service
+    seller_frontend_service
+
+permissions:
+  contents: read
+  id-token: write
+  security-events: write
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache Bazel
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/bazel
+            ~/.cache/bazelisk
+          key: >-
+            bazel-test-${{ runner.os }}-${{ hashFiles('**/*.bzl',
+            '**/*.bazel', 'WORKSPACE', '.bazelversion', '.bazelrc') }}
+          restore-keys: |
+            bazel-test-${{ runner.os }}-
+
+      - name: Setup build environment
+        run: |
+          # Install Bazelisk (compatible with .bazelversion file)
+          curl -LO "https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64"
+          chmod +x bazelisk-linux-amd64
+          sudo mv bazelisk-linux-amd64 /usr/local/bin/bazel
+
+          # Verify installation
+          bazel version
+
+      - name: Run tests using existing infrastructure
+        run: |
+          # Import CI-specific Bazel configuration
+          echo "import %workspace%/.bazelrc.ci" >> .bazelrc
+
+          # Use the existing build script to run tests with CI optimizations
+          WORKSPACE_MOUNT=${{ github.workspace }} \
+          BAZEL_EXTRA_ARGS="--config=azure-ci" \
+          production/packaging/build_and_test_all_in_docker \
+            --service-path buyer_frontend_service \
+            --service-path seller_frontend_service \
+            --service-path bidding_service \
+            --service-path auction_service \
+            --instance ${{ env.INSTANCE }} --platform ${{ env.PLATFORM }} \
+            --build-flavor ${{ env.BUILD_FLAVOR }} \
+            --no-platform-build
+
+  build-and-push:
+    name: Build and Push Images
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.ref_type == 'tag'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:v0.12.4
+
+      - name: Login to Azure Container Registry
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ env.REGISTRY }}
+          username: ${{ secrets.AZURE_CLIENT_ID }}
+          password: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+      - name: Cache Bazel
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/bazel
+            ~/.cache/bazelisk
+          key: >-
+            bazel-build-${{ runner.os }}-${{ hashFiles('**/*.bzl',
+            '**/*.bazel', 'WORKSPACE', '.bazelversion', '.bazelrc') }}
+          restore-keys: |
+            bazel-build-${{ runner.os }}-
+
+      - name: Setup build environment
+        run: |
+          # Install Bazelisk (compatible with .bazelversion file)
+          curl -LO "https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64"
+          chmod +x bazelisk-linux-amd64
+          sudo mv bazelisk-linux-amd64 /usr/local/bin/bazel
+
+          # Verify installation
+          bazel version
+
+      - name: Set up Azure CLI
+        uses: azure/CLI@v1
+        with:
+          azcliversion: 2.30.0
+
+      - name: Build all services and create Docker images
+        env:
+          AZURE_REGISTRY: ${{ env.REGISTRY }}
+          AZURE_IMAGE_TAG: ${{ github.sha }}
+          AZURE_BUILD_FLAVOR: ${{ env.BUILD_FLAVOR }}
+        run: |
+          # Import CI-specific Bazel configuration
+          echo "import %workspace%/.bazelrc.ci" >> .bazelrc
+
+          # Use the existing build script to build services and generate Docker images
+          WORKSPACE_MOUNT=${{ github.workspace }} \
+          BAZEL_EXTRA_ARGS="--config=azure-ci" \
+          production/packaging/build_and_test_all_in_docker \
+            --service-path buyer_frontend_service \
+            --service-path seller_frontend_service \
+            --service-path bidding_service \
+            --service-path auction_service \
+            --instance ${{ env.INSTANCE }} --platform ${{ env.PLATFORM }} \
+            --build-flavor ${{ env.BUILD_FLAVOR }} \
+            --no-tests --no-precommit --no-platform-build
+
+      - name: Tag and push images to Azure Container Registry
+        run: |
+          # Process each service image
+          services=(${{ env.SERVICES }})
+          for service in "${services[@]}"; do
+            image_tar="dist/debian/${service}_image.tar"
+            if [[ -f "${image_tar}" ]]; then
+              echo "Processing ${service} image..."
+
+              # Load the Docker image from tar
+              docker load -i "${image_tar}"
+
+              # Find the loaded image (it will have a bazel-generated name)
+              local_image=$(docker images --format "table {{.Repository}}:{{.Tag}}" | grep "bazel/production/packaging/gcp/${service}" | head -1)
+
+              if [[ -n "${local_image}" ]]; then
+                # Define target image names
+                repo_image="${{ env.REGISTRY }}/${service}"
+                commit_tag="${repo_image}:${{ github.sha }}"
+
+                # Tag the image
+                docker tag "${local_image}" "${commit_tag}"
+
+                # Add additional tags based on context
+                if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+                  latest_tag="${repo_image}:latest"
+                  docker tag "${local_image}" "${latest_tag}"
+                  docker push "${latest_tag}"
+                fi
+
+                if [[ "${{ github.ref_type }}" == "tag" ]]; then
+                  release_tag="${repo_image}:${{ github.ref_name }}"
+                  docker tag "${local_image}" "${release_tag}"
+                  docker push "${release_tag}"
+                fi
+
+                # Push the commit tag
+                docker push "${commit_tag}"
+
+                echo "Successfully pushed ${service} image"
+              else
+                echo "Error: Could not find loaded image for ${service}"
+                exit 1
+              fi
+            else
+              echo "Warning: Image tar not found for ${service}: ${image_tar}"
+              ls -la dist/debian/ || echo "dist/debian directory not found"
+              exit 1
+            fi
+          done
+
+      - name: Run security scanning
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          services=(${{ env.SERVICES }})
+          for service in "${services[@]}"; do
+            echo "Scanning ${service} for vulnerabilities..."
+            # Use Azure Security Center or third-party scanner
+            # This is a placeholder - actual implementation depends on preferred scanner
+            docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              aquasec/trivy:latest image \
+              --exit-code 0 \
+              --severity HIGH,CRITICAL \
+              --format json \
+              --output ${service}-scan-results.json \
+              ${{ env.REGISTRY }}/${service}:${{ github.sha }} || true
+          done
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: |
+            dist/
+            *-scan-results.json
+          retention-days: 7
+
+      - name: Create release artifacts
+        if: github.ref_type == 'tag'
+        run: |
+          # Create release bundle with all service images
+          mkdir -p release-artifacts
+          cp dist/debian/*_image.tar release-artifacts/
+          cp dist/debian/*_artifacts.zip release-artifacts/
+
+          # Create manifest with image information
+          cat > release-artifacts/manifest.json << EOF
+          {
+            "version": "${{ github.ref_name }}",
+            "commit": "${{ github.sha }}",
+            "build_time": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "services": {
+          $(for service in ${{ env.SERVICES }}; do
+            echo "    \"${service}\": \"${{ env.REGISTRY }}/${service}:${{ github.ref_name }}\","
+          done | sed '$ s/.$//')
+            }
+          }
+          EOF
+
+      - name: Upload release artifacts
+        if: github.ref_type == 'tag'
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-${{ github.ref_name }}
+          path: release-artifacts/
+          retention-days: 90
