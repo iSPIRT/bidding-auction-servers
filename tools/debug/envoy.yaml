@@ -42,6 +42,10 @@ static_resources:
                 key: 'x-fledge-bidding-signals-format-version'
                 value: '2'
               append: false
+            - header:
+                key: 'Access-Control-Allow-Origin'
+                value: '*'
+              append: false
           http_filters:
           - name: envoy.filters.http.grpc_stats
             typed_config:
@@ -62,7 +66,8 @@ static_resources:
               "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_json_transcoder.v3.GrpcJsonTranscoder
               proto_descriptor: "/etc/envoy/bidding_auction_servers_descriptor_set.pb"
               services:
-              - "privacy_sandbox.bidding_auction_servers.SellerFrontEnd"
+              - "privacy_sandbox.bidding_auction_servers.BuyerFrontEnd"
+              convert_grpc_status: true
               print_options:
                 add_whitespace: true
                 always_print_primitive_fields: true
@@ -73,7 +78,7 @@ static_resources:
           - name: envoy.filters.http.router
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
-
+              
   clusters:
   - name: grpc_cluster
     connect_timeout: 2s
@@ -93,7 +98,7 @@ static_resources:
             address:
               socket_address:
                 address: 0.0.0.0
-                port_value: 50053
+                port_value: 50051
     common_lb_config:
       healthy_panic_threshold:
         value: 50
