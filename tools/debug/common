@@ -126,8 +126,6 @@ function run_server {
       --heap-profiler-signal "${MEM_PROF_SIGNAL}"
     )
     "${PROJECT_ROOT}/builders/tools/cbuild" "${cbuild_args[@]}" --cmd "${SERVER_START_CMD}"
-  elif [[ "${MODE}" == "--envoy" ]]; then
-      docker run -it "${DOCKER_RUN_ARGS[@]}" "bfe-envoy:latest" -c "/usr/local/bin/envoy --config-path /etc/envoy/envoy.yaml -l warn & sleep 2 && ${SERVER_START_CMD}"
   else
     docker_image_uri="${DOCKER_IMAGE_URI:-$(docker load -i dist/debian/${SERVICE_NAME}_service_image.tar | sed -nr "s/^Loaded image: (.*)$/\1/p")}"
     docker run -it "${DOCKER_RUN_ARGS[@]}" "${docker_image_uri}" -c "${SERVER_START_CMD}"
