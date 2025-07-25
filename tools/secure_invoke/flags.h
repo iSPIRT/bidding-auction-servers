@@ -43,5 +43,15 @@ ABSL_DECLARE_FLAG(std::optional<bool>, enable_unlimited_egress);
 ABSL_DECLARE_FLAG(std::optional<bool>, enforce_kanon);
 ABSL_DECLARE_FLAG(std::string, pas_buyer_input_json);
 ABSL_DECLARE_FLAG(std::string, headers);
+ABSL_DECLARE_FLAG(std::string, client_key);
+ABSL_DECLARE_FLAG(std::string, client_cert);
+ABSL_DECLARE_FLAG(std::string, ca_cert);
+ABSL_DECLARE_FLAG(bool, enable_verbose);
+ABSL_DECLARE_FLAG(std::string, batch_file);
+ABSL_DECLARE_FLAG(int, max_retries);
+ABSL_DECLARE_FLAG(int, max_concurrent_requests);
+ABSL_DECLARE_FLAG(int, retry_delay_ms);
+ABSL_DECLARE_FLAG(std::string, failure_log_path);
+ABSL_DECLARE_FLAG(std::string, success_log_path);
 
 #endif  // TOOLS_SECURE_INVOKE_FLAGS_H_
