@@ -1,0 +1,4 @@
+{"id":1,"request":{"buyerInput":{"interestGroups":[{"biddingSignalsKeys":["9999999990"],"name":"Rajini Kausalya","userBiddingSignals":"{\"age\":58, \"average_amount_spent\":50008000, \"total_spent\":100016000}"}]},"publisherName":"irctc.com","seller":"irctc.com"}}
+{"id":2,"request":{"buyerInput":{"interestGroups":[{"biddingSignalsKeys":["9999999991"],"name":"Sumitra Rao","userBiddingSignals":"{\"age\":42, \"average_amount_spent\":30000000, \"total_spent\":60000000}"}]},"publisherName":"irctc.com","seller":"irctc.com"}}
+{"id":3,"request":{"buyerInput":{"interestGroups":[{"biddingSignalsKeys":["9999999992"],"name":"Amit Kumar","userBiddingSignals":"{\"age\":35, \"average_amount_spent\":25000000, \"total_spent\":50000000}"}]},"publisherName":"irctc.com","seller":"irctc.com"}}
+

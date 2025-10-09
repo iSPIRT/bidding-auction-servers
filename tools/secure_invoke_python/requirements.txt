@@ -1,0 +1,7 @@
+pyhpke>=0.3.0
+requests>=2.31.0
+protobuf>=4.23.0
+grpcio>=1.54.0
+grpcio-tools>=1.54.0
+cryptography>=41.0.0
+
