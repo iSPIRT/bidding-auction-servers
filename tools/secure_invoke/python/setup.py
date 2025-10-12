@@ -25,12 +25,15 @@ class BazelBuildExt(build_ext):
         
         print(f"Building C++ library from: {project_root}")
         
-        # Build the shared library using Bazel
+        # Build the shared libraries using Bazel
         try:
+            # Build the main secure_invoke library
             subprocess.run([
                 "./builders/tools/bazel-debian", "build", 
                 "//tools/secure_invoke:libsecure_invoke.so"
             ], check=True)
+            
+            # Note: libcddl.so is built as part of main repository build
             
             # Copy the built library to the package lib directory
             src_lib = project_root / "bazel-bin/tools/secure_invoke/libsecure_invoke.so"
@@ -44,14 +47,15 @@ class BazelBuildExt(build_ext):
                 shutil.copy2(src_lib, dst_lib)
                 print(f"Copied library: {src_lib} -> {dst_lib}")
                 
-                # Also copy dependent libraries if they exist
-                cddl_src = project_root / "tools/secure_invoke/libcddl.so"
+                # Also copy dependent libraries from external build
+                cddl_src = project_root / "bazel-bin/external/cddl_lib/libcddl.so"
                 if cddl_src.exists():
                     cddl_dst = dst_lib.parent / "libcddl.so"
                     shutil.copy2(cddl_src, cddl_dst)
                     print(f"Copied dependent library: {cddl_src} -> {cddl_dst}")
                 else:
-                    print("Warning: libcddl.so not found, package may need manual library setup")
+                    print(f"Warning: libcddl.so not found at {cddl_src}, package may need manual library setup")
+                    print(f"Make sure the main repository has been built first with Bazel")
             else:
                 raise FileNotFoundError(f"Built library not found: {src_lib}")
                 
