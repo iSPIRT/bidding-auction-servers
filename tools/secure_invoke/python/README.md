@@ -36,6 +36,15 @@ The `setup.py` automatically:
 2. Copies the built library and dependencies to the package
 3. Installs the Python bindings
 
+**Important**: Before installing this package, you must first build the main bidding-auction-servers repository to generate `libcddl.so`, as it has dependencies on dataplane modules:
+
+```bash
+# From the repository root
+./production/packaging/build_and_test_all_in_docker --service-path buyer_frontend_service --service-path bidding_service  --instance local --platform gcp --build-flavor non_prod --gcp-skip-image-upload --no-tests --no-precommit 
+```
+
+This ensures `libcddl.so` is available at `bazel-bin/external/cddl_lib/libcddl.so` for the Python package to copy.
+
 No additional build scripts are needed!
 
 ## Usage
