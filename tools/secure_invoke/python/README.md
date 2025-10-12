@@ -130,3 +130,25 @@ PYTHONPATH=. python3 secure_invoke_crypto/tests/test_encrypt_http.py --encrypt-o
 - Python 3.8+
 - Linux (with Bazel build tools)
 - requests library for HTTP functionality
+
+## Building Wheel Package
+
+To create a distributable wheel file:
+
+1. Install wheel package:
+   ```bash
+   pip install wheel
+   ```
+
+2. Clean and create distribution directory:
+   ```bash
+   rm -rf dist
+   mkdir -p dist
+   ```
+
+3. Build the wheel:
+   ```bash
+   python setup.py bdist_wheel --dist-dir dist
+   ```
+
+This will create a `.whl` file in the `dist/` directory that can be installed with `pip install dist/*.whl` or distributed to other systems.

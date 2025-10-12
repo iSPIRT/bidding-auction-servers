@@ -8,25 +8,70 @@ used in Privacy Sandbox bidding and auction systems.
 
 from setuptools import setup, find_packages, Extension
 from setuptools.command.build_ext import build_ext
+try:
+    from setuptools.command.build import build
+except ImportError:
+    from distutils.command.build import build
+try:
+    from setuptools.command.install import install
+except ImportError:
+    from distutils.command.install import install
 import os
 import subprocess
 import sys
 from pathlib import Path
 
-class BazelBuildExt(build_ext):
-    """Custom build extension that uses Bazel to build the C++ library."""
+class BazelBuildLibs:
+    """Mixin class that provides Bazel library building functionality."""
     
-    def run(self):
-        """Build the C++ library using Bazel before building Python extensions."""
+    _libs_built = False  # Class variable to track if libraries have been built
+    
+    def build_bazel_libs(self):
+        """Build the C++ libraries using Bazel."""
+        # Always clean existing .so files from lib directory to avoid permission issues
+        # Use absolute path to source directory to avoid build directory confusion
+        project_root = Path(__file__).parent.parent.parent.parent.absolute()
+        lib_dir = project_root / "tools/secure_invoke/python/secure_invoke_crypto/lib"
+        print(f"Checking lib directory: {lib_dir}")
+        print(f"Lib directory exists: {lib_dir.exists()}")
+        
+        if lib_dir.exists():
+            import glob
+            so_pattern = str(lib_dir / "*.so")
+            so_files = glob.glob(so_pattern)
+            print(f"Cleaning existing .so files from: {lib_dir}")
+            print(f"Looking for pattern: {so_pattern}")
+            print(f"Found .so files: {so_files}")
+            
+            if so_files:
+                for so_file in so_files:
+                    try:
+                        os.remove(so_file)
+                        print(f"Removed: {so_file}")
+                    except OSError as e:
+                        print(f"Warning: Could not remove {so_file}: {e}")
+            else:
+                print("No .so files found to clean")
+        else:
+            print("Lib directory does not exist, will be created during build")
+        
+        # Skip actual Bazel build if libraries are already built in this session
+        if BazelBuildLibs._libs_built:
+            print("Bazel build already completed in this session, skipping build step...")
+            return
+        
+        # Reset the built flag for testing
+        BazelBuildLibs._libs_built = False
         
         # Get the project root (assuming we're in tools/secure_invoke/python)
         project_root = Path(__file__).parent.parent.parent.parent.absolute()
-        os.chdir(project_root)
+        original_cwd = os.getcwd()  # Save original directory
         
         print(f"Building C++ library from: {project_root}")
         
         # Build the shared libraries using Bazel
         try:
+            os.chdir(project_root)
             # Build the main secure_invoke library
             subprocess.run([
                 "./builders/tools/bazel-debian", "build", 
@@ -35,12 +80,14 @@ class BazelBuildExt(build_ext):
             
             # Note: libcddl.so is built as part of main repository build
             
-            # Copy the built library to the package lib directory
+            # Copy the built library to the package lib directory (source directory)
             src_lib = project_root / "bazel-bin/tools/secure_invoke/libsecure_invoke.so"
-            dst_lib = Path(__file__).parent / "secure_invoke_crypto/lib/libsecure_invoke.so"
+            # Always use the source directory, not build directory
+            source_dir = project_root / "tools/secure_invoke/python/secure_invoke_crypto/lib"
+            dst_lib = source_dir / "libsecure_invoke.so"
             
             # Ensure lib directory exists
-            dst_lib.parent.mkdir(exist_ok=True)
+            dst_lib.parent.mkdir(parents=True, exist_ok=True)
             
             if src_lib.exists():
                 import shutil
@@ -50,7 +97,7 @@ class BazelBuildExt(build_ext):
                 # Also copy dependent libraries from external build
                 cddl_src = project_root / "bazel-bin/external/cddl_lib/libcddl.so"
                 if cddl_src.exists():
-                    cddl_dst = dst_lib.parent / "libcddl.so"
+                    cddl_dst = source_dir / "libcddl.so"
                     shutil.copy2(cddl_src, cddl_dst)
                     print(f"Copied dependent library: {cddl_src} -> {cddl_dst}")
                 else:
@@ -65,8 +112,36 @@ class BazelBuildExt(build_ext):
         except Exception as e:
             print(f"Error during build: {e}")
             sys.exit(1)
+        finally:
+            # Always restore original working directory
+            os.chdir(original_cwd)
         
+        # Libraries built successfully
+        BazelBuildLibs._libs_built = True
+
+class BazelBuildExt(build_ext, BazelBuildLibs):
+    """Custom build extension that uses Bazel to build the C++ library."""
+    
+    def run(self):
+        """Build the C++ library using Bazel before building Python extensions."""
+        self.build_bazel_libs()
         # Continue with normal extension building (if any)
+        super().run()
+
+class BazelBuild(build, BazelBuildLibs):
+    """Custom build command that ensures Bazel libraries are built."""
+    
+    def run(self):
+        """Build libraries then continue with normal build."""
+        self.build_bazel_libs()
+        super().run()
+
+class BazelInstall(install, BazelBuildLibs):
+    """Custom install command that ensures Bazel libraries are built."""
+    
+    def run(self):
+        """Build libraries then continue with normal install."""
+        self.build_bazel_libs()
         super().run()
 
 
@@ -90,12 +165,12 @@ def get_long_description():
 setup(
     name="secure-invoke-crypto",
     version=get_version(),
-    author="Privacy Sandbox Team",
-    author_email="privacy-sandbox@example.com",
+    author="ispirt team",
+    author_email="pavankad@gmail.com",
     description="Python cryptographic bindings for SecureInvoke library",
     long_description=get_long_description(),
     long_description_content_type="text/markdown",
-    url="https://github.com/privacysandbox/bidding-auction-servers",
+    url="https://github.com/ispirt/bidding-auction-servers",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -137,6 +212,8 @@ setup(
     include_package_data=True,
     cmdclass={
         'build_ext': BazelBuildExt,
+        'build': BazelBuild,
+        'install': BazelInstall,
     },
     entry_points={
         "console_scripts": [
