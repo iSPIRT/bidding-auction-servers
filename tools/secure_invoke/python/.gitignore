@@ -1,0 +1,14 @@
+/venv
+**/__pycache__
+*.pyc
+*.so
+
+*.egg-info/
+dist/
+build/
+*.egg
+temp_extract/
+*.tmp
+*.temp
+.vscode/
+.cursor/

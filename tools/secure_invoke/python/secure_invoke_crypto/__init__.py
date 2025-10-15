@@ -25,13 +25,19 @@ from .crypto import (
     EncryptionResult,
     SecureInvokeCryptoError,
 )
+from .kms_client import KMSClient, KMSClientError
+from .http_client import BiddingHTTPClient, HTTPClientError
 
 __all__ = [
     "__version__",
     "SecureInvokeCrypto",
-    "BiddingCryptoClient", 
+    "BiddingCryptoClient",
+    "KMSClient",
+    "BiddingHTTPClient",
     "EncryptionResult",
     "SecureInvokeCryptoError",
+    "KMSClientError",
+    "HTTPClientError",
 ]
 
 # Package metadata

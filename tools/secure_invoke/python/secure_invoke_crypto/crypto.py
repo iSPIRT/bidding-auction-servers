@@ -287,37 +287,13 @@ class BiddingCryptoClient:
             Decrypted GetBidsResponse as a dictionary
         """
         return self.crypto.decrypt(encrypted_response, secret)
-    
-    def create_sample_bid_request(self) -> Dict[str, Any]:
-        """
-        Create a sample bid request for testing.
-        
-        Returns:
-            Dictionary representing a sample GetBidsRawRequest
-        """
-        return {
-            "client_type": "CLIENT_TYPE_BROWSER",
-    "buyerInput": {
-        "interestGroups": [
-            {
-                "name": "Rajni Kausalya",
-                "biddingSignalsKeys": [
-                    "9999999990"
-                ],
-                "userBiddingSignals": "{\"age\":29, \"average_amount_spent\":10000, \"total_spent\":20000}"
-            }
-        ]
-    },
-    "seller": "irctc.com",
-    "publisherName": "irctc.com"
-        }
 
 
 def demo():
     """
     Demonstration of the crypto APIs.
     """
-    # Default test keys (same as in the test files)
+    # Default test keys (fallback only)
     public_key = "87ey8XZPXAd+/+ytKv2GFUWW5j9zdepSJ2G4gebDwyM="
     key_id = "64"
     
@@ -332,7 +308,20 @@ def demo():
         
         # Create a sample bid request
         print("\nCreating sample bid request...")
-        bid_request = client.create_sample_bid_request()
+        bid_request = {
+            "client_type": "CLIENT_TYPE_BROWSER",
+            "buyerInput": {
+                "interestGroups": [
+                    {
+                        "name": "Test User",
+                        "biddingSignalsKeys": ["1234567890"],
+                        "userBiddingSignals": "{\"age\":30, \"average_amount_spent\":5000, \"total_spent\":10000}"
+                    }
+                ]
+            },
+            "seller": "example.com",
+            "publisherName": "example.com"
+        }
         print(f"Bid request: {json.dumps(bid_request, indent=2)}")
         
         # Encrypt the request
