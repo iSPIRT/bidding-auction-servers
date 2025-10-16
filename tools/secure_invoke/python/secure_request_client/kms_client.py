@@ -3,7 +3,7 @@
 KMS (Key Management Service) client for fetching public keys.
 
 This module provides functionality to fetch public keys from a KMS endpoint
-for use with the SecureInvoke Crypto library.
+for use with the Secure Request Client library.
 """
 
 import requests
@@ -56,8 +56,7 @@ class KMSClient:
         # Set default headers
         self.session.headers.update({
             'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'User-Agent': 'SecureInvoke-KMS-Client/1.0'
+            'Accept': 'application/json'
         })
     
     def _configure_ssl(self):

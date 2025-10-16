@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Integration tests for the main SecureInvoke pipeline.
+Integration tests for the main SecureRequestClient pipeline.
 """
 
 import unittest
@@ -13,27 +13,27 @@ import json
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from secure_invoke import SecureInvokeTool, SecureInvokeConfig
+from secure_request import SecureRequestClient, SecureRequestConfig
 
 
-class TestSecureInvokeIntegration(unittest.TestCase):
-    """Integration tests for SecureInvoke pipeline."""
+class TestSecureRequestIntegration(unittest.TestCase):
+    """Integration tests for SecureRequestClient pipeline."""
     
     def setUp(self):
         """Set up test fixtures."""
-        self.config = SecureInvokeConfig()
+        self.config = SecureRequestConfig()
         self.config.kms_host = "https://test-kms.example.com"
-        self.config.buyer_host = "http://test-buyer.example.com"
+        self.config.offer_host = "http://test-offer.example.com"
         self.config.insecure = True
         self.config.enable_verbose = False
-        self.tool = SecureInvokeTool(self.config)
+        self.tool = SecureRequestClient(self.config)
     
-    @patch('secure_invoke_crypto.kms_client.KMSClient.list_public_keys')
-    @patch('secure_invoke_crypto.BiddingCryptoClient.encrypt_bid_request')
-    @patch('secure_invoke_crypto.http_client.BiddingHTTPClient.send_bid_request')
-    @patch('secure_invoke_crypto.BiddingCryptoClient.decrypt_bid_response')
+    @patch('secure_request_client.kms_client.KMSClient.list_public_keys')
+    @patch('secure_request_client.OfferRequestClient.encrypt_offer_request')
+    @patch('secure_request_client.http_client.OfferHTTPClient.send_offer_request')
+    @patch('secure_request_client.OfferRequestClient.decrypt_offer_response')
     def test_full_pipeline_success(self, mock_decrypt, mock_send, mock_encrypt, mock_list_keys):
-        """Test full pipeline execution with success."""
+        """Test full pipeline execution with success for offer requests."""
         # Mock KMS response
         mock_list_keys.return_value = [
             {'key_id': '22', 'public_key': 'test_public_key'}
@@ -74,9 +74,9 @@ class TestSecureInvokeIntegration(unittest.TestCase):
         mock_send.assert_called_once()
         mock_decrypt.assert_called_once()
     
-    @patch('secure_invoke_crypto.kms_client.KMSClient.list_public_keys')
+    @patch('secure_request_client.kms_client.KMSClient.list_public_keys')
     def test_fetch_public_key_success(self, mock_list_keys):
-        """Test successful public key fetching."""
+        """Test successful public key fetching for offer requests."""
         mock_list_keys.return_value = [
             {'key_id': '22', 'public_key': 'test_public_key'}
         ]
@@ -87,10 +87,10 @@ class TestSecureInvokeIntegration(unittest.TestCase):
         self.assertEqual(result['key_id'], '22')
         self.assertEqual(result['public_key'], 'test_public_key')
     
-    @patch('secure_invoke_crypto.kms_client.KMSClient.list_public_keys')
+    @patch('secure_request_client.kms_client.KMSClient.list_public_keys')
     def test_fetch_public_key_failure(self, mock_list_keys):
-        """Test public key fetching failure."""
-        from secure_invoke_crypto.kms_client import KMSClientError
+        """Test public key fetching failure for offer requests."""
+        from secure_request_client.kms_client import KMSClientError
         mock_list_keys.side_effect = KMSClientError("KMS connection failed")
         
         result = self.tool.fetch_public_key()
@@ -98,24 +98,24 @@ class TestSecureInvokeIntegration(unittest.TestCase):
         self.assertIsNone(result)
     
     def test_setup_kms_client_success(self):
-        """Test successful KMS client setup."""
+        """Test successful KMS client setup for offer requests."""
         result = self.tool.setup_kms_client()
         
         self.assertTrue(result)
         self.assertIsNotNone(self.tool.kms_client)
     
     def test_setup_kms_client_failure(self):
-        """Test KMS client setup failure with invalid host."""
+        """Test KMS client setup failure with invalid host for offer requests."""
         # Use invalid host to trigger failure
         self.config.kms_host = "invalid://host"
-        tool = SecureInvokeTool(self.config)
+        tool = SecureRequestClient(self.config)
         
         result = tool.setup_kms_client()
         
         self.assertFalse(result)
     
     def test_setup_http_client_success(self):
-        """Test successful HTTP client setup."""
+        """Test successful HTTP client setup for offer requests."""
         result = self.tool.setup_http_client()
         
         self.assertTrue(result)
@@ -124,8 +124,8 @@ class TestSecureInvokeIntegration(unittest.TestCase):
     def test_setup_http_client_failure(self):
         """Test HTTP client setup failure with invalid host."""
         # Use invalid host to trigger failure
-        self.config.buyer_host = "invalid://host"
-        tool = SecureInvokeTool(self.config)
+        self.config.offer_host = "invalid://host"
+        tool = SecureRequestClient(self.config)
         
         result = tool.setup_http_client()
         
@@ -170,11 +170,11 @@ class TestSecureInvokeIntegration(unittest.TestCase):
         
         self.assertEqual(result, test_data)
     
-    @patch('secure_invoke_crypto.kms_client.KMSClient.list_public_keys')
-    @patch('secure_invoke_crypto.BiddingCryptoClient.encrypt_bid_request')
-    @patch('secure_invoke_crypto.http_client.BiddingHTTPClient.send_bid_request')
+    @patch('secure_request_client.kms_client.KMSClient.list_public_keys')
+    @patch('secure_request_client.OfferRequestClient.encrypt_offer_request')
+    @patch('secure_request_client.http_client.OfferHTTPClient.send_offer_request')
     def test_pipeline_without_encrypted_response(self, mock_send, mock_encrypt, mock_list_keys):
-        """Test pipeline when server doesn't return encrypted response."""
+        """Test pipeline when server doesn't return encrypted response for offer requests."""
         # Mock KMS response
         mock_list_keys.return_value = [
             {'key_id': '22', 'public_key': 'test_public_key'}
@@ -205,11 +205,11 @@ class TestSecureInvokeIntegration(unittest.TestCase):
         # Verify result
         self.assertEqual(result, {'result': 'success'})
     
-    @patch('secure_invoke_crypto.kms_client.KMSClient.list_public_keys')
-    @patch('secure_invoke_crypto.BiddingCryptoClient.encrypt_bid_request')
-    @patch('secure_invoke_crypto.http_client.BiddingHTTPClient.send_bid_request')
+    @patch('secure_request_client.kms_client.KMSClient.list_public_keys')
+    @patch('secure_request_client.OfferRequestClient.encrypt_offer_request')
+    @patch('secure_request_client.http_client.OfferHTTPClient.send_offer_request')
     def test_pipeline_encryption_failure(self, mock_send, mock_encrypt, mock_list_keys):
-        """Test pipeline when encryption fails."""
+        """Test pipeline when encryption fails for offer requests."""
         # Mock KMS response
         mock_list_keys.return_value = [
             {'key_id': '22', 'public_key': 'test_public_key'}
@@ -234,11 +234,11 @@ class TestSecureInvokeIntegration(unittest.TestCase):
         # Verify result
         self.assertIsNone(result)
     
-    @patch('secure_invoke_crypto.kms_client.KMSClient.list_public_keys')
-    @patch('secure_invoke_crypto.BiddingCryptoClient.encrypt_bid_request')
-    @patch('secure_invoke_crypto.http_client.BiddingHTTPClient.send_bid_request')
+    @patch('secure_request_client.kms_client.KMSClient.list_public_keys')
+    @patch('secure_request_client.OfferRequestClient.encrypt_offer_request')
+    @patch('secure_request_client.http_client.OfferHTTPClient.send_offer_request')
     def test_pipeline_http_failure(self, mock_send, mock_encrypt, mock_list_keys):
-        """Test pipeline when HTTP request fails."""
+        """Test pipeline when HTTP request fails for offer requests."""
         # Mock KMS response
         mock_list_keys.return_value = [
             {'key_id': '22', 'public_key': 'test_public_key'}
@@ -251,7 +251,7 @@ class TestSecureInvokeIntegration(unittest.TestCase):
         mock_encrypt.return_value = mock_encrypt_result
         
         # Mock HTTP failure
-        from secure_invoke_crypto.http_client import HTTPClientError
+        from secure_request_client.http_client import HTTPClientError
         mock_send.side_effect = HTTPClientError("HTTP request failed")
         
         # Test data

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test runner for SecureInvoke unit tests.
+Test runner for SecureRequestClient unit tests.
 """
 
 import unittest

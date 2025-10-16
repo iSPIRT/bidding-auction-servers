@@ -11,7 +11,7 @@ import os
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from secure_invoke_crypto.kms_client import KMSClient, KMSClientError
+from secure_request_client.kms_client import KMSClient, KMSClientError
 
 
 class TestKMSClient(unittest.TestCase):

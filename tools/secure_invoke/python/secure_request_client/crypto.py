@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Python crypto API for secure_invoke C++ library.
+Python crypto API for secure request client.
 
-This module provides clean Python APIs for the encrypt and decrypt functions
-from the secure_invoke C++ library, designed for programmatic use in other Python code.
+This module provides clean Python APIs for encrypting and decrypting offer requests
+and responses, designed for programmatic use in other Python code.
 """
 
 import ctypes
@@ -15,7 +15,7 @@ from typing import Dict, Optional, Any, Union, Tuple, NamedTuple
 import base64
 
 
-class SecureInvokeResult(Structure):
+class SecureRequestResult(Structure):
     """C-compatible result structure"""
     _fields_ = [
         ("success", c_int),
@@ -24,27 +24,27 @@ class SecureInvokeResult(Structure):
     ]
 
 
-class EncryptionResult(NamedTuple):
-    """Result from encryption operation"""
+class OfferEncryptionResult(NamedTuple):
+    """Result from offer request encryption operation"""
     encrypted_data: str
     secret: str
     
 
-class SecureInvokeCryptoError(Exception):
-    """Custom exception for secure_invoke crypto errors"""
+class SecureRequestError(Exception):
+    """Custom exception for secure request client errors"""
     pass
 
 
-class SecureInvokeCrypto:
+class SecureRequestCrypto:
     """
-    Python crypto interface for the secure_invoke C++ library.
+    Python crypto interface for secure request operations.
     
-    This class provides clean encrypt and decrypt APIs for programmatic use.
+    This class provides clean encrypt and decrypt APIs for offer requests and responses.
     """
     
     def __init__(self, library_path: Optional[str] = None):
         """
-        Initialize the SecureInvokeCrypto.
+        Initialize the SecureRequestCrypto.
         
         Args:
             library_path: Path to the shared library. If None, attempts to find it automatically.
@@ -55,7 +55,7 @@ class SecureInvokeCrypto:
         
         # Initialize the library
         if not self._lib.secure_invoke_init():
-            raise SecureInvokeCryptoError("Failed to initialize secure_invoke library")
+            raise SecureRequestError("Failed to initialize secure_invoke library")
     
     def __del__(self):
         """Cleanup when the object is destroyed"""
@@ -83,7 +83,7 @@ class SecureInvokeCrypto:
                     break
             
             if library_path is None:
-                raise SecureInvokeCryptoError(
+                raise SecureRequestError(
                     "Could not find secure_invoke shared library. "
                     "Please provide the library_path parameter."
                 )
@@ -91,7 +91,7 @@ class SecureInvokeCrypto:
         try:
             self._lib = ctypes.CDLL(library_path)
         except OSError as e:
-            raise SecureInvokeCryptoError(f"Failed to load library {library_path}: {e}")
+            raise SecureRequestError(f"Failed to load library {library_path}: {e}")
     
     def _setup_function_signatures(self):
         """Setup function signatures for proper ctypes interfacing"""
@@ -105,14 +105,14 @@ class SecureInvokeCrypto:
         
         # secure_invoke_encrypt
         self._lib.secure_invoke_encrypt.argtypes = [c_char_p, c_char_p, c_char_p]
-        self._lib.secure_invoke_encrypt.restype = POINTER(SecureInvokeResult)
+        self._lib.secure_invoke_encrypt.restype = POINTER(SecureRequestResult)
         
         # secure_invoke_decrypt
         self._lib.secure_invoke_decrypt.argtypes = [c_char_p, c_char_p]
-        self._lib.secure_invoke_decrypt.restype = POINTER(SecureInvokeResult)
+        self._lib.secure_invoke_decrypt.restype = POINTER(SecureRequestResult)
         
         # secure_invoke_free_result
-        self._lib.secure_invoke_free_result.argtypes = [POINTER(SecureInvokeResult)]
+        self._lib.secure_invoke_free_result.argtypes = [POINTER(SecureRequestResult)]
         self._lib.secure_invoke_free_result.restype = None
         
         # secure_invoke_get_version
@@ -124,23 +124,23 @@ class SecureInvokeCrypto:
         version = self._lib.secure_invoke_get_version()
         return version.decode('utf-8') if version else "unknown"
     
-    def encrypt(self, 
+    def encrypt_offer_request(self, 
                 input_json: Union[Dict, str],
                 public_key: str,
-                key_id: str) -> EncryptionResult:
+                key_id: str) -> OfferEncryptionResult:
         """
-        Encrypt a GetBids request.
+        Encrypt an offer request.
         
         Args:
             input_json: Either a dictionary representing GetBidsRawRequest or JSON string
             public_key: Base64 encoded public key
-            key_id: Key ID as string
+            key_id: Key ID as string (can be hex or decimal)
             
         Returns:
-            EncryptionResult containing encrypted_data and secret
+            OfferEncryptionResult containing encrypted_data and secret
             
         Raises:
-            SecureInvokeCryptoError: If the encryption operation fails
+            SecureRequestError: If the encryption operation fails
         """
         # Convert input to JSON string if it's a dictionary
         if isinstance(input_json, dict):
@@ -151,29 +151,35 @@ class SecureInvokeCrypto:
                 json.loads(input_json)
                 json_str = input_json
             except json.JSONDecodeError as e:
-                raise SecureInvokeCryptoError(f"Invalid JSON string: {e}")
+                raise SecureRequestError(f"Invalid JSON string: {e}")
         else:
-            raise SecureInvokeCryptoError(f"input_json must be dict or JSON string, got {type(input_json)}")
+            raise SecureRequestError(f"input_json must be dict or JSON string, got {type(input_json)}")
         
-        # Call the C++ encrypt function
+        # Convert hex key ID to decimal if needed
+        try:
+            decimal_key_id = str(int(key_id, 16))
+        except ValueError:
+            decimal_key_id = key_id
+        
+        # Call the C++ encrypt function with decimal key ID
         result_ptr = self._lib.secure_invoke_encrypt(
             json_str.encode('utf-8'),
             public_key.encode('utf-8'),
-            key_id.encode('utf-8')
+            decimal_key_id.encode('utf-8')
         )
         
         if not result_ptr:
-            raise SecureInvokeCryptoError("secure_invoke_encrypt returned null")
+            raise SecureRequestError("secure_invoke_encrypt returned null")
         
         try:
             result = result_ptr.contents
             
             if not result.success:
                 error_msg = result.error_message.decode('utf-8') if result.error_message else "Unknown error"
-                raise SecureInvokeCryptoError(f"Encryption failed: {error_msg}")
+                raise SecureRequestError(f"Encryption failed: {error_msg}")
             
             if not result.response:
-                raise SecureInvokeCryptoError("Encryption succeeded but no response data")
+                raise SecureRequestError("Encryption succeeded but no response data")
             
             # Parse the response to extract encrypted data and secret
             response_str = result.response.decode('utf-8')
@@ -182,22 +188,22 @@ class SecureInvokeCrypto:
             delimiter = "|||SECRET|||"
             delimiter_pos = response_str.find(delimiter)
             if delimiter_pos == -1:
-                raise SecureInvokeCryptoError("Secret delimiter not found in encryption response")
+                raise SecureRequestError("Secret delimiter not found in encryption response")
             
             encrypted_data = response_str[:delimiter_pos]
             secret = response_str[delimiter_pos + len(delimiter):]
             
-            return EncryptionResult(encrypted_data=encrypted_data, secret=secret)
+            return OfferEncryptionResult(encrypted_data=encrypted_data, secret=secret)
         
         finally:
             # Free the result
             self._lib.secure_invoke_free_result(result_ptr)
     
-    def decrypt(self, 
+    def decrypt_offer_response(self, 
                 encrypted_response: str,
                 secret: str) -> Dict[str, Any]:
         """
-        Decrypt a server response.
+        Decrypt an offer response from the server.
         
         Args:
             encrypted_response: Base64 encoded encrypted response from server
@@ -207,7 +213,7 @@ class SecureInvokeCrypto:
             Decrypted response as a dictionary
             
         Raises:
-            SecureInvokeCryptoError: If the decryption operation fails
+            SecureRequestError: If the decryption operation fails
         """
         # Call the C++ decrypt function
         result_ptr = self._lib.secure_invoke_decrypt(
@@ -216,35 +222,35 @@ class SecureInvokeCrypto:
         )
         
         if not result_ptr:
-            raise SecureInvokeCryptoError("secure_invoke_decrypt returned null")
+            raise SecureRequestError("secure_invoke_decrypt returned null")
         
         try:
             result = result_ptr.contents
             
             if not result.success:
                 error_msg = result.error_message.decode('utf-8') if result.error_message else "Unknown error"
-                raise SecureInvokeCryptoError(f"Decryption failed: {error_msg}")
+                raise SecureRequestError(f"Decryption failed: {error_msg}")
             
             if not result.response:
-                raise SecureInvokeCryptoError("Decryption succeeded but no response data")
+                raise SecureRequestError("Decryption succeeded but no response data")
             
             # Parse the JSON response
             response_str = result.response.decode('utf-8')
             try:
                 return json.loads(response_str)
             except json.JSONDecodeError as e:
-                raise SecureInvokeCryptoError(f"Failed to parse decrypted response as JSON: {e}")
+                raise SecureRequestError(f"Failed to parse decrypted response as JSON: {e}")
         
         finally:
             # Free the result
             self._lib.secure_invoke_free_result(result_ptr)
 
 
-class BiddingCryptoClient:
+class OfferRequestClient:
     """
-    High-level client for bidding auction cryptographic operations.
+    High-level client for offer request operations.
     
-    This class provides convenient methods for common bidding operations.
+    This class provides convenient methods for common offer request operations.
     """
     
     def __init__(self, 
@@ -252,98 +258,39 @@ class BiddingCryptoClient:
                  key_id: str,
                  library_path: Optional[str] = None):
         """
-        Initialize the bidding crypto client.
+        Initialize the offer request client.
         
         Args:
             public_key: Base64 encoded public key for encryption
             key_id: Key ID for the public key
             library_path: Path to the shared library (optional)
         """
-        self.crypto = SecureInvokeCrypto(library_path)
+        self.crypto = SecureRequestCrypto(library_path)
         self.public_key = public_key
         self.key_id = key_id
     
-    def encrypt_bid_request(self, bid_request: Dict[str, Any]) -> EncryptionResult:
+    def encrypt_offer_request(self, offer_request: Dict[str, Any]) -> OfferEncryptionResult:
         """
-        Encrypt a bid request.
+        Encrypt an offer request.
         
         Args:
-            bid_request: Dictionary representing the GetBidsRawRequest
+            offer_request: Dictionary representing the GetBidsRawRequest
             
         Returns:
-            EncryptionResult with encrypted data and secret
+            OfferEncryptionResult with encrypted data and secret
         """
-        return self.crypto.encrypt(bid_request, self.public_key, self.key_id)
+        return self.crypto.encrypt_offer_request(offer_request, self.public_key, self.key_id)
     
-    def decrypt_bid_response(self, encrypted_response: str, secret: str) -> Dict[str, Any]:
+    def decrypt_offer_response(self, encrypted_response: str, secret: str) -> Dict[str, Any]:
         """
-        Decrypt a bid response from the server.
+        Decrypt an offer response from the server.
         
         Args:
-            encrypted_response: Encrypted response from the bidding server
+            encrypted_response: Encrypted response from the server
             secret: Secret from the encryption operation
             
         Returns:
-            Decrypted GetBidsResponse as a dictionary
+            Decrypted response as a dictionary
         """
-        return self.crypto.decrypt(encrypted_response, secret)
+        return self.crypto.decrypt_offer_response(encrypted_response, secret)
 
-
-def demo():
-    """
-    Demonstration of the crypto APIs.
-    """
-    # Default test keys (fallback only)
-    public_key = "87ey8XZPXAd+/+ytKv2GFUWW5j9zdepSJ2G4gebDwyM="
-    key_id = "64"
-    
-    try:
-        print("SecureInvoke Crypto Demo")
-        print("=" * 40)
-        
-        # Initialize the crypto client
-        print("Initializing crypto client...")
-        client = BiddingCryptoClient(public_key, key_id)
-        print(f"Library version: {client.crypto.get_version()}")
-        
-        # Create a sample bid request
-        print("\nCreating sample bid request...")
-        bid_request = {
-            "client_type": "CLIENT_TYPE_BROWSER",
-            "buyerInput": {
-                "interestGroups": [
-                    {
-                        "name": "Test User",
-                        "biddingSignalsKeys": ["1234567890"],
-                        "userBiddingSignals": "{\"age\":30, \"average_amount_spent\":5000, \"total_spent\":10000}"
-                    }
-                ]
-            },
-            "seller": "example.com",
-            "publisherName": "example.com"
-        }
-        print(f"Bid request: {json.dumps(bid_request, indent=2)}")
-        
-        # Encrypt the request
-        print("\nEncrypting bid request...")
-        encryption_result = client.encrypt_bid_request(bid_request)
-        print(f"Encrypted data length: {len(encryption_result.encrypted_data)} bytes")
-        print(f"Secret length: {len(encryption_result.secret)} bytes")
-        print(f"Encrypted data (first 100 chars): {encryption_result.encrypted_data[:100]}...")
-        print(f"Secret (first 50 chars): {encryption_result.secret[:50]}...")
-        
-        # For demo purposes, we'll simulate a server response
-        # In real usage, you would send the encrypted_data to the server and get back a response
-        print("\nDemo completed successfully!")
-        print("Next steps: Send encrypted_data to bidding server, then use decrypt_bid_response() on the response")
-        
-    except SecureInvokeCryptoError as e:
-        print(f"Crypto error: {e}", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"Unexpected error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-
-if __name__ == '__main__':
-    demo()

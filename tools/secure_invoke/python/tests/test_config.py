@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unit tests for SecureInvoke configuration validation.
+Unit tests for SecureRequestClient configuration validation.
 """
 
 import unittest
@@ -12,21 +12,21 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from secure_invoke import SecureInvokeConfig
+from secure_request import SecureRequestConfig
 
 
-class TestSecureInvokeConfig(unittest.TestCase):
-    """Test cases for SecureInvokeConfig validation."""
+class TestSecureRequestConfig(unittest.TestCase):
+    """Test cases for SecureRequestConfig validation."""
     
     def setUp(self):
         """Set up test fixtures."""
-        self.config = SecureInvokeConfig()
+        self.config = SecureRequestConfig()
     
     def test_valid_config_with_file(self):
         """Test valid configuration with request file."""
         self.config.kms_host = "127.0.0.1:8000"
-        self.config.buyer_host = "127.0.0.1:51052"
-        self.config.request_payload = "test.json"
+        self.config.offer_host = "127.0.0.1:51052"
+        self.config.request_payload = "sample_offer_request.json"
         self.config.insecure = True
         
         # Create a temporary file
@@ -43,7 +43,7 @@ class TestSecureInvokeConfig(unittest.TestCase):
     def test_valid_config_with_json_payload(self):
         """Test valid configuration with direct JSON payload."""
         self.config.kms_host = "127.0.0.1:8000"
-        self.config.buyer_host = "127.0.0.1:51052"
+        self.config.offer_host = "127.0.0.1:51052"
         self.config.request_payload = '{"client_type": "CLIENT_TYPE_BROWSER"}'
         self.config.insecure = True
         
@@ -51,14 +51,14 @@ class TestSecureInvokeConfig(unittest.TestCase):
     
     def test_missing_kms_host(self):
         """Test validation fails when kms_host is missing."""
-        self.config.buyer_host = "127.0.0.1:51052"
+        self.config.offer_host = "127.0.0.1:51052"
         self.config.request_payload = '{"test": "data"}'
         self.config.insecure = True
         
         self.assertFalse(self.config.validate())
     
-    def test_missing_buyer_host(self):
-        """Test validation fails when buyer_host is missing."""
+    def test_missing_offer_host(self):
+        """Test validation fails when offer_host is missing."""
         self.config.kms_host = "127.0.0.1:8000"
         self.config.request_payload = '{"test": "data"}'
         self.config.insecure = True
@@ -68,7 +68,7 @@ class TestSecureInvokeConfig(unittest.TestCase):
     def test_missing_request_payload(self):
         """Test validation fails when request_payload is missing."""
         self.config.kms_host = "127.0.0.1:8000"
-        self.config.buyer_host = "127.0.0.1:51052"
+        self.config.offer_host = "127.0.0.1:51052"
         self.config.insecure = True
         
         self.assertFalse(self.config.validate())
@@ -76,7 +76,7 @@ class TestSecureInvokeConfig(unittest.TestCase):
     def test_nonexistent_file(self):
         """Test validation fails when request file doesn't exist."""
         self.config.kms_host = "127.0.0.1:8000"
-        self.config.buyer_host = "127.0.0.1:51052"
+        self.config.offer_host = "127.0.0.1:51052"
         self.config.request_payload = "nonexistent.json"
         self.config.insecure = True
         
@@ -85,7 +85,7 @@ class TestSecureInvokeConfig(unittest.TestCase):
     def test_ssl_certificate_requirements_secure_mode(self):
         """Test SSL certificate requirements in secure mode."""
         self.config.kms_host = "127.0.0.1:8000"
-        self.config.buyer_host = "127.0.0.1:51052"
+        self.config.offer_host = "127.0.0.1:51052"
         self.config.request_payload = '{"test": "data"}'
         self.config.insecure = False  # Secure mode
         
@@ -105,7 +105,7 @@ class TestSecureInvokeConfig(unittest.TestCase):
     def test_ssl_certificate_requirements_insecure_mode(self):
         """Test SSL certificate requirements in insecure mode."""
         self.config.kms_host = "127.0.0.1:8000"
-        self.config.buyer_host = "127.0.0.1:51052"
+        self.config.offer_host = "127.0.0.1:51052"
         self.config.request_payload = '{"test": "data"}'
         self.config.insecure = True  # Insecure mode
         

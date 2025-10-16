@@ -13,7 +13,7 @@ import json
 import requests
 import sys
 import urllib3
-from secure_invoke_crypto import BiddingCryptoClient, SecureInvokeCryptoError
+from secure_invoke_crypto import OfferRequestClient, SecureRequestError
 
 # Disable SSL warnings for localhost testing
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -182,7 +182,7 @@ def main():
     try:
         # Step 1: Initialize crypto client
         print("1. Initializing crypto client...")
-        client = BiddingCryptoClient(public_key, key_id)
+        client = OfferRequestClient(public_key, key_id)
         print(f"   Library version: {client.crypto.get_version()}")
         
         # Step 2: Create test bid request
@@ -193,7 +193,7 @@ def main():
         
         # Step 3: Encrypt the request
         print("\n3. Encrypting bid request...")
-        encryption_result = client.encrypt_bid_request(bid_request)
+        encryption_result = client.encrypt_offer_request(bid_request)
         print(f"   ✓ Encryption successful!")
         print(f"   Encrypted data length: {len(encryption_result.encrypted_data)} bytes")
         print(f"   Secret length: {len(encryption_result.secret)} bytes")
@@ -212,7 +212,7 @@ def main():
         
         # Step 6: Decrypt the response
         print("\n6. Decrypting server response...")
-        decrypted_response = client.decrypt_bid_response(encrypted_response, encryption_result.secret)
+        decrypted_response = client.decrypt_offer_response(encrypted_response, encryption_result.secret)
         print(f"   ✓ Decryption successful!")
         print(f"   Decrypted response: {json.dumps(decrypted_response, indent=2)}")
         
@@ -223,7 +223,7 @@ def main():
         print("\n✓ End-to-end test completed successfully!")
         return True
         
-    except SecureInvokeCryptoError as e:
+    except SecureRequestError as e:
         print(f"\n✗ Crypto error: {e}")
         return False
     except requests.RequestException as e:
@@ -252,13 +252,13 @@ def test_encryption_only():
     
     try:
         print("Initializing crypto client...")
-        client = BiddingCryptoClient(public_key, key_id)
+        client = OfferRequestClient(public_key, key_id)
         
         print("Creating test bid request...")
         bid_request = create_test_bid_request()
         
         print("Encrypting bid request...")
-        encryption_result = client.encrypt_bid_request(bid_request)
+        encryption_result = client.encrypt_offer_request(bid_request)
         
         print(f"✓ Encryption successful!")
         print(f"  Encrypted data: {len(encryption_result.encrypted_data)} bytes")

@@ -12,7 +12,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from secure_invoke import SecureInvokeTool, SecureInvokeConfig
+from secure_request import SecureRequestClient, SecureRequestConfig
 
 
 class TestRequestLoading(unittest.TestCase):
@@ -20,11 +20,11 @@ class TestRequestLoading(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        self.config = SecureInvokeConfig()
+        self.config = SecureRequestConfig()
         self.config.kms_host = "127.0.0.1:8000"
-        self.config.buyer_host = "127.0.0.1:51052"
+        self.config.offer_host = "127.0.0.1:51052"
         self.config.insecure = True
-        self.tool = SecureInvokeTool(self.config)
+        self.tool = SecureRequestClient(self.config)
     
     def test_load_json_file(self):
         """Test loading JSON file."""

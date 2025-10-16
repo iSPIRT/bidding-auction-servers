@@ -20,27 +20,27 @@ Example usage:
 
 from ._version import __version__
 from .crypto import (
-    SecureInvokeCrypto,
-    BiddingCryptoClient,
-    EncryptionResult,
-    SecureInvokeCryptoError,
+    SecureRequestCrypto,
+    OfferRequestClient,
+    OfferEncryptionResult,
+    SecureRequestError,
 )
 from .kms_client import KMSClient, KMSClientError
-from .http_client import BiddingHTTPClient, HTTPClientError
+from .http_client import OfferHTTPClient, HTTPClientError
 
 __all__ = [
     "__version__",
-    "SecureInvokeCrypto",
-    "BiddingCryptoClient",
+    "SecureRequestCrypto",
+    "OfferRequestClient",
+    "OfferEncryptionResult",
+    "SecureRequestError",
     "KMSClient",
-    "BiddingHTTPClient",
-    "EncryptionResult",
-    "SecureInvokeCryptoError",
+    "OfferHTTPClient",
     "KMSClientError",
     "HTTPClientError",
 ]
 
 # Package metadata
-__author__ = "Privacy Sandbox Team"
-__email__ = "privacy-sandbox@example.com"
+__author__ = "iSPIRT DEPA Team"
+# __email__ = "depa@ispirt.com"
 __description__ = "Python bindings for SecureInvoke cryptographic library"

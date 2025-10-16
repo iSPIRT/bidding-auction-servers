@@ -1,6 +1,6 @@
 # SecureInvoke Unit Tests
 
-This directory contains comprehensive unit tests for the SecureInvoke tool, organized by component.
+This directory contains comprehensive unit tests for the SecureRequestClient tool, organized by component.
 
 ## Test Structure
 
@@ -22,7 +22,7 @@ Tests for KMS (Key Management Service) client functionality:
 Tests for HTTP client functionality:
 - Client initialization with SSL configuration
 - Bid request sending with retry logic
-- Key ID conversion (hex to decimal)
+- Key ID handling in headers
 - Error handling and response processing
 
 ### `test_request_loading.py`
@@ -50,7 +50,7 @@ Integration tests for the complete pipeline:
 
 ### Run All Tests
 ```bash
-cd /home/azureuser/secure_invoke_python
+cd bidding-auction-servers/tools/secure_invoke/python
 python3 tests/run_tests.py
 ```
 

@@ -1,0 +1,16 @@
+{
+    "client_type": "CLIENT_TYPE_BROWSER",
+    "buyerInput": {
+        "interestGroups": [
+            {
+                "name": "Travel Enthusiasts",
+                "biddingSignalsKeys": [
+                    "1234567890"
+                ],
+                "userBiddingSignals": "{\"age\": 28, \"travel_frequency\": \"monthly\", \"budget\": 5000, \"preferred_destinations\": [\"Europe\", \"Asia\"]}"
+            }
+        ]
+    },
+    "seller": "travel.example.com",
+    "publisherName": "travel.example.com"
+}

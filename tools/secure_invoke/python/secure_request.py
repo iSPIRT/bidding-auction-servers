@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
 """
-SecureInvoke Tool
+Secure Request Client
 
-A command-line tool for secure bidding operations with support for:
-- Direct payload input or file-based payloads
-- Configurable KMS and buyer hosts
+A command-line tool for secure request operations with support for:
+- Direct offer request payload input or file-based payloads
+- Configurable KMS and Offer hosts
 - SSL certificate management
-- Custom headers and retry logic
+- Custom headers and retry logic for Offer service
 - Verbose debugging output
-
-Usage:
-    python secure_invoke.py --kms-host 127.0.0.1:8000 --buyer-host 127.0.0.1:51052 --request-file request.json
-    python secure_invoke.py --kms-host 127.0.0.1:8000 --buyer-host 127.0.0.1:51052 --request-payload '{"client_type":"CLIENT_TYPE_BROWSER",...}'
 """
 
 import json
@@ -28,9 +24,9 @@ from io import StringIO
 # Add the current directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from secure_invoke_crypto import BiddingCryptoClient
-from secure_invoke_crypto.kms_client import KMSClient, KMSClientError
-from secure_invoke_crypto.http_client import BiddingHTTPClient, HTTPClientError
+from secure_request_client import OfferRequestClient
+from secure_request_client.kms_client import KMSClient, KMSClientError
+from secure_request_client.http_client import OfferHTTPClient, HTTPClientError
 
 
 @contextlib.contextmanager
@@ -44,13 +40,13 @@ def suppress_stdout():
         sys.stdout = old_stdout
 
 
-class SecureInvokeConfig:
-    """Configuration class for SecureInvoke tool parameters."""
+class SecureRequestConfig:
+    """Configuration class for Secure Request Client parameters."""
     
     def __init__(self):
         # Core parameters
         self.kms_host: str = ""
-        self.buyer_host: str = ""
+        self.offer_host: str = ""
         self.request_payload: str = ""
         
         # Retry and connection parameters
@@ -72,8 +68,8 @@ class SecureInvokeConfig:
             print("✗ Error: kms-host is required")
             return False
         
-        if not self.buyer_host:
-            print("✗ Error: buyer-host is required")
+        if not self.offer_host:
+            print("✗ Error: offer-host is required")
             return False
         
         if not self.request_payload:
@@ -117,13 +113,13 @@ class SecureInvokeConfig:
         return False
 
 
-class SecureInvokeTool:
-    """Enhanced SecureInvoke tool with comprehensive parameter support."""
+class SecureRequestClient:
+    """Enhanced Secure Request Client with comprehensive parameter support."""
     
-    def __init__(self, config: SecureInvokeConfig):
+    def __init__(self, config: SecureRequestConfig):
         self.config = config
         self.kms_client: Optional[KMSClient] = None
-        self.http_client: Optional[BiddingHTTPClient] = None
+        self.http_client: Optional[OfferHTTPClient] = None
         
     def log(self, message: str, level: str = "INFO"):
         """Log a message if verbose mode is enabled."""
@@ -159,15 +155,15 @@ class SecureInvokeTool:
     def setup_http_client(self) -> bool:
         """Setup HTTP client with SSL configuration."""
         try:
-            self.log(f"Setting up HTTP client for: {self.config.buyer_host}")
+            self.log(f"Setting up HTTP client for: {self.config.offer_host}")
             
             # Add protocol if not specified
-            buyer_host = self.config.buyer_host
-            if not buyer_host.startswith(('http://', 'https://')):
-                buyer_host = f"http://{buyer_host}"
+            offer_host = self.config.offer_host
+            if not offer_host.startswith(('http://', 'https://')):
+                offer_host = f"http://{offer_host}"
             
-            self.http_client = BiddingHTTPClient(
-                bidding_host=buyer_host,
+            self.http_client = OfferHTTPClient(
+                offer_host=offer_host,
                 retry_attempts=self.config.retries,
                 insecure=self.config.insecure,
                 client_cert=self.config.client_cert,
@@ -275,7 +271,7 @@ class SecureInvokeTool:
             self.log(f"Request data: {json.dumps(request_data, indent=2)}")
             
             # Initialize crypto client
-            crypto_client = BiddingCryptoClient(
+            crypto_client = OfferRequestClient(
                 public_key=public_key['public_key'],
                 key_id=public_key['key_id']
             )
@@ -283,26 +279,26 @@ class SecureInvokeTool:
             # Encrypt the request
             self.log("Encrypting request...")
             if self.config.enable_verbose:
-                encryption_result = crypto_client.encrypt_bid_request(request_data)
+                encryption_result = crypto_client.encrypt_offer_request(request_data)
             else:
                 with suppress_stdout():
-                    encryption_result = crypto_client.encrypt_bid_request(request_data)
+                    encryption_result = crypto_client.encrypt_offer_request(request_data)
             
-            # Send to buyer service
-            self.log("Sending request to buyer service...")
-            server_response = self.http_client.send_bid_request(encryption_result.encrypted_data)
+            # Send to offer service
+            self.log("Sending request to offer service...")
+            server_response = self.http_client.send_offer_request(encryption_result.encrypted_data)
             
             # Decrypt response if available
             if 'responseCiphertext' in server_response:
                 self.log("Decrypting response...")
                 if self.config.enable_verbose:
-                    decrypted_response = crypto_client.decrypt_bid_response(
+                    decrypted_response = crypto_client.decrypt_offer_response(
                         server_response['responseCiphertext'],
                         encryption_result.secret
                     )
                 else:
                     with suppress_stdout():
-                        decrypted_response = crypto_client.decrypt_bid_response(
+                        decrypted_response = crypto_client.decrypt_offer_response(
                             server_response['responseCiphertext'],
                             encryption_result.secret
                         )
@@ -319,7 +315,7 @@ class SecureInvokeTool:
     
     
     def run(self) -> bool:
-        """Run the SecureInvoke tool."""
+        """Run the Secure Request Client."""
         try:
             # Validate configuration
             if not self.config.validate():
@@ -388,23 +384,23 @@ def parse_headers(headers_str: str) -> Dict[str, str]:
 
 
 def main():
-    """Main entry point for the SecureInvoke tool."""
+    """Main entry point for the Secure Request Client."""
     parser = argparse.ArgumentParser(
-        description='SecureInvoke Tool for secure bidding operations',
+        description='Secure Request Client for secure request operations',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Using request file with SSL certificates (required)
-  python secure_invoke.py --kms-host 127.0.0.1:8000 --buyer-host 127.0.0.1:51052 --request-payload request.json --ca-cert ca.crt
+  python secure_request.py --kms-host 127.0.0.1:8000 --offer-host 127.0.0.1:51052 --request-payload request.json --ca-cert ca.crt
 
   # Using direct JSON payload with client certificates
-  python secure_invoke.py --kms-host 127.0.0.1:8000 --buyer-host 127.0.0.1:51052 --request-payload '{"client_type":"CLIENT_TYPE_BROWSER",...}' --client-cert client.crt --client-key client.key
+  python secure_request.py --kms-host 127.0.0.1:8000 --offer-host 127.0.0.1:51052 --request-payload '{"client_type":"CLIENT_TYPE_BROWSER",...}' --client-cert client.crt --client-key client.key
 
   # Insecure mode (no SSL certificates required)
-  python secure_invoke.py --kms-host 127.0.0.1:8000 --buyer-host 127.0.0.1:51052 --request-payload request.json --insecure
+  python secure_request.py --kms-host 127.0.0.1:8000 --offer-host 127.0.0.1:51052 --request-payload request.json --insecure
 
   # With custom headers and retries
-  python secure_invoke.py --kms-host 127.0.0.1:8000 --buyer-host 127.0.0.1:51052 --request-payload request.json --ca-cert ca.crt --headers '{"Authorization":"Bearer token"}' --retries 3 --enable-verbose
+  python secure_request.py --kms-host 127.0.0.1:8000 --offer-host 127.0.0.1:51052 --request-payload request.json --ca-cert ca.crt --headers '{"Authorization":"Bearer token"}' --retries 3 --enable-verbose
         """
     )
     
@@ -413,14 +409,14 @@ Examples:
                        required=True,
                        help='Host and port of the KMS service (e.g., 127.0.0.1:8000)')
     
-    parser.add_argument('--buyer-host', 
+    parser.add_argument('--offer-host', 
                        required=True,
-                       help='Host and port of the Buyer service (e.g., 127.0.0.1:51052)')
+                       help='Host and port of the Offer service (e.g., 127.0.0.1:51052)')
     
     # Request payload parameter (can be file path or direct JSON)
     parser.add_argument('--request-payload', 
                        required=True,
-                       help='Request payload as JSON string or file path (JSON/JSONL format)')
+                       help='Offer request payload as JSON string or file path (JSON/JSONL format)')
     
     # Retry and connection parameters
     parser.add_argument('--retries', 
@@ -454,9 +450,9 @@ Examples:
     args = parser.parse_args()
     
     # Create configuration
-    config = SecureInvokeConfig()
+    config = SecureRequestConfig()
     config.kms_host = args.kms_host
-    config.buyer_host = args.buyer_host
+    config.offer_host = args.offer_host
     config.request_payload = args.request_payload
     config.retries = args.retries
     config.insecure = args.insecure
@@ -474,10 +470,10 @@ Examples:
             sys.exit(1)
     
     # Set up the library path
-    os.environ['LD_LIBRARY_PATH'] = './secure_invoke_crypto/lib:' + os.environ.get('LD_LIBRARY_PATH', '')
+    os.environ['LD_LIBRARY_PATH'] = './secure_request_client/lib:' + os.environ.get('LD_LIBRARY_PATH', '')
     
     # Run the tool
-    tool = SecureInvokeTool(config)
+    tool = SecureRequestClient(config)
     
     success = tool.run()
     

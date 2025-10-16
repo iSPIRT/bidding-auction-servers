@@ -1,6 +1,6 @@
-# SecureInvoke Tool
+# Secure Request Client
 
-A Python tool for secure communication with Privacy Sandbox bidding and auction systems. Supports both CLI and programmatic usage.
+A Python tool for secure communication with Privacy Sandbox offer request systems. Supports both CLI and programmatic usage.
 
 ## Quick Start
 
@@ -15,17 +15,17 @@ pip install secure_invoke_crypto-0.1.0-py3-none-any.whl
 
 # 3. Extract shared libraries
 python -m zipfile -e secure_invoke_crypto-0.1.0-py3-none-any.whl temp_extract
-mkdir -p secure_invoke_crypto/lib
-cp temp_extract/secure_invoke_crypto/lib/*.so secure_invoke_crypto/lib/
+mkdir -p secure_request_client/lib
+cp temp_extract/secure_invoke_crypto/lib/*.so secure_request_client/lib/
 rm -rf temp_extract
 
 # 4. Set up environment
-export LD_LIBRARY_PATH=./secure_invoke_crypto/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=./secure_request_client/lib:$LD_LIBRARY_PATH
 export KMS_HOST=https://depa-inferencing-kms.centralindia.cloudapp.azure.com
-export BUYER_HOST=http://4.224.152.16:51052/v1/getbids
+export OFFER_HOST=http://4.213.211.238:51052/v1/getbids
 
 # 5. Test minimal command
-python3 secure_invoke.py --kms-host $KMS_HOST --buyer-host $BUYER_HOST --request-payload get_bids_request.json --insecure
+python3 secure_request.py --kms-host $KMS_HOST --offer-host $OFFER_HOST --request-payload sample_offer_request.json --insecure
 ```
 
 ## Features
@@ -52,12 +52,12 @@ pip install secure_invoke_crypto-0.1.0-py3-none-any.whl
 
 # Extract shared libraries from the wheel
 python -m zipfile -e secure_invoke_crypto-0.1.0-py3-none-any.whl temp_extract
-mkdir -p secure_invoke_crypto/lib
-cp temp_extract/secure_invoke_crypto/lib/*.so secure_invoke_crypto/lib/
+mkdir -p secure_request_client/lib
+cp temp_extract/secure_invoke_crypto/lib/*.so secure_request_client/lib/
 rm -rf temp_extract
 
 # Set library path
-export LD_LIBRARY_PATH=./secure_invoke_crypto/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=./secure_request_client/lib:$LD_LIBRARY_PATH
 ```
 
 ## Usage
@@ -67,25 +67,25 @@ export LD_LIBRARY_PATH=./secure_invoke_crypto/lib:$LD_LIBRARY_PATH
 ```bash
 # Set up environment variables
 export KMS_HOST=https://depa-inferencing-kms.centralindia.cloudapp.azure.com
-export BUYER_HOST=http://4.224.152.16:51052/v1/getbids
+export OFFER_HOST=http://4.213.211.238:51052/v1/getbids
 
 # Basic usage (minimal test command)
-python3 secure_invoke.py --kms-host $KMS_HOST --buyer-host $BUYER_HOST --request-payload get_bids_request.json --insecure
+python3 secure_request.py --kms-host $KMS_HOST --offer-host $OFFER_HOST --request-payload sample_offer_request.json --insecure
 
 # With SSL certificates
-python3 secure_invoke.py \
+python3 secure_request.py \
   --kms-host $KMS_HOST \
-  --buyer-host $BUYER_HOST \
-  --request-payload get_bids_request.json \
+  --offer-host $OFFER_HOST \
+  --request-payload sample_offer_request.json \
   --ca-cert ca.crt \
   --client-cert client.crt \
   --client-key client.key
 
 # With custom headers and retries
-python3 secure_invoke.py \
+python3 secure_request.py \
   --kms-host $KMS_HOST \
-  --buyer-host $BUYER_HOST \
-  --request-payload get_bids_request.json \
+  --offer-host $OFFER_HOST \
+  --request-payload sample_offer_request.json \
   --headers '{"Authorization": "Bearer token"}' \
   --retries 3 \
   --enable-verbose
@@ -94,18 +94,17 @@ python3 secure_invoke.py \
 ### Programmatic Usage
 
 ```python
-from secure_invoke import SecureInvokeTool, SecureInvokeConfig
+from secure_request import SecureRequestClient, SecureRequestConfig
 
-# Create configuration
-config = SecureInvokeConfig()
+config = SecureRequestConfig()
 config.kms_host = "https://depa-inferencing-kms.centralindia.cloudapp.azure.com"
-config.buyer_host = "http://4.224.152.16:51052/v1/getbids"
+config.offer_host = "http://4.213.211.238:51052/v1/getbids"
 config.insecure = True
-config.request_payload = '{"client_type":"CLIENT_TYPE_BROWSER",...}'
+config.request_payload = '{"client_type":"CLIENT_TYPE_BROWSER","buyerInput":{"interestGroups":[{"name":"Rajni Kausalya","biddingSignalsKeys":["9999999990"],"userBiddingSignals":"{\\"age\\":29,\\"average_amount\\":10000}"}]},"seller":"irctc.com","publisherName":"irctc.com"}'
 
 # Run the tool
-tool = SecureInvokeTool(config)
-success = tool.run()
+client = SecureRequestClient(config)
+success = client.run()
 ```
 
 ## Testing
@@ -125,19 +124,11 @@ python3 programmatic_example.py
 ## Project Structure
 
 ```
-secure_invoke_python/
-├── secure_invoke.py              # Main CLI tool
+secure_invoke/python/
+├── secure_request.py              # Main CLI tool
 ├── programmatic_example.py       # Programmatic usage examples
-├── get_bids_request.json         # Sample request file
+├── sample_offer_request.json         # Sample request file
 ├── tests/                        # Unit tests
-│   ├── test_config.py
-│   ├── test_http_client.py
-│   ├── test_kms_client.py
-│   └── run_tests.py
-└── secure_invoke_crypto/         # Crypto library
-    ├── http_client.py
-    ├── kms_client.py
-    └── lib/                      # Shared libraries
 ```
 
 ## Configuration
@@ -145,7 +136,7 @@ secure_invoke_python/
 | Parameter | Description | Example |
 |-----------|-------------|---------|
 | `--kms-host` | KMS service host | `https://kms.example.com` |
-| `--buyer-host` | Buyer service host | `http://buyer.example.com:51052` |
+| `--offer-host` | Offer service host | `http://offer.example.com:51052` |
 | `--request-payload` | JSON file or direct JSON | `request.json` or `'{"data":"value"}'` |
 | `--insecure` | Disable SSL verification | Flag |
 | `--ca-cert` | CA certificate file | `ca.crt` |
