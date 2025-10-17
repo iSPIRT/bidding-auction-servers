@@ -9,20 +9,22 @@ A Python tool for secure communication with Privacy Sandbox offer request system
 cd bidding-auction-servers/tools/secure_invoke/python
 
 # 2. Create and activate your python virtual environment
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv <venv_name> # e.g. python3 -m venv venv
+source <venv_name>/bin/activate # e.g. source venv/bin/activate
 
-# 3. Run the automated installation script inside your python virtual environment
-./install.sh
+# 3. Install the CLI tool
+pip install .  # or `pip install -e .` for development
 
 # 4. Set up library path inside your python virtual environment
-export LD_LIBRARY_PATH=./secure_request_client/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$(python -c "import secure_request_client; import os; print(os.path.join(os.path.dirname(secure_request_client.__file__), 'lib'))"):$LD_LIBRARY_PATH
 
-# 5. Set up environment variables
-export KMS_HOST=https://depa-inferencing-kms.centralindia.cloudapp.azure.com
-export OFFER_HOST=http://20.219.207.27:51052/v1/getbids
+# 5. Set up environment variables for KMS and Offer service hosts
+export KMS_HOST=https://<kms_host_url>  # eg. export KMS_HOST=https://depa-inferencing-kms.centralindia.cloudapp.azure.com
+export OFFER_HOST=http://<offer_host_ip>:<port>/v1/getbids  # eg. export OFFER_HOST=http://20.219.207.27:51052/v1/getbids
 
-# 6. Use the CLI command
+# 6. Test the CLI command
+secure-request --help
+
 secure-request --kms-host $KMS_HOST --offer-host $OFFER_HOST --request-payload sample_offer_request.json --insecure
 ```
 
@@ -35,39 +37,6 @@ secure-request --kms-host $KMS_HOST --offer-host $OFFER_HOST --request-payload s
 - **Retry Logic**: Configurable retry attempts
 - **Verbose Mode**: Detailed debugging output
 
-## Installation
-
-### Quick Installation (Recommended)
-
-```bash
-# Navigate to the project directory
-cd bidding-auction-servers/tools/secure_invoke/python
-
-# Run the automated installation script
-./install.sh
-```
-
-### Manual Installation
-
-```bash
-# Navigate to the project directory
-cd bidding-auction-servers/tools/secure_invoke/python
-
-# Install the wheel package (contains pre-built shared libraries)
-pip install secure_invoke_crypto-0.1.0-py3-none-any.whl
-
-# Extract shared libraries from the wheel
-python -m zipfile -e secure_invoke_crypto-0.1.0-py3-none-any.whl temp_extract
-mkdir -p secure_request_client/lib
-cp temp_extract/secure_invoke_crypto/lib/*.so secure_request_client/lib/
-rm -rf temp_extract
-
-# Install the CLI tool
-pip install -e .
-
-# Set library path
-export LD_LIBRARY_PATH=./secure_request_client/lib:$LD_LIBRARY_PATH
-```
 
 ## Usage
 
@@ -85,12 +54,18 @@ secure-request \
   --request-payload sample_offer_request.json \
   --insecure
 
-# With SSL certificates
+# Using direct JSON string
+secure-request \
+  --kms-host $KMS_HOST \
+  --offer-host $OFFER_HOST \
+  --request-payload '{"client_type":"CLIENT_TYPE_BROWSER","buyerInput":{"interestGroups":[{"name":"test","biddingSignalsKeys":["123"]}]},"seller":"test.com","publisherName":"test.com"}' \
+  --insecure
+
+# With client certificates
 secure-request \
   --kms-host $KMS_HOST \
   --offer-host $OFFER_HOST \
   --request-payload sample_offer_request.json \
-  --ca-cert ca.crt \
   --client-cert client.crt \
   --client-key client.key
 
@@ -110,11 +85,11 @@ secure-request --help
 ### Programmatic Usage
 
 ```python
-from secure_request import SecureRequestClient, SecureRequestConfig
+from secure_request_client.cli import SecureRequestClient, SecureRequestConfig
 
 config = SecureRequestConfig()
 config.kms_host = "https://depa-inferencing-kms.centralindia.cloudapp.azure.com"
-config.offer_host = "http://4.213.211.238:51052/v1/getbids"
+config.offer_host = "http://20.219.207.27:51052/v1/getbids"
 config.insecure = True
 config.request_payload = '{"client_type":"CLIENT_TYPE_BROWSER","buyerInput":{"interestGroups":[{"name":"Rajni Kausalya","biddingSignalsKeys":["9999999990"],"userBiddingSignals":"{\\"age\\":29,\\"average_amount\\":10000}"}]},"seller":"irctc.com","publisherName":"irctc.com"}'
 
@@ -126,15 +101,8 @@ success = client.run()
 ## Testing
 
 ```bash
-# Run unit tests
-python3 tests/run_tests.py
-
-# Run specific test modules
-python3 tests/run_tests.py test_config
-python3 tests/run_tests.py test_http_client
-
-# Run programmatic examples
-python3 programmatic_example.py
+# Run the various examples (uncomment the examples you want to test) in programmatic_examples.py
+python3 programmatic_examples.py
 ```
 
 ## Project Structure
@@ -147,33 +115,32 @@ secure_invoke/python/
 │   ├── kms_client.py            # KMS client
 │   ├── http_client.py           # HTTP client
 │   └── lib/                      # Shared libraries (.so files)
-├── programmatic_example.py       # Programmatic usage examples
+├── programmatic_examples.py       # Programmatic usage examples
 ├── sample_offer_request.json    # Sample request file
 ├── setup.py                     # Package setup
-├── install.sh                   # Installation script
-└── tests/                       # Unit tests
+├── README.md                    # Detailed documentation
+└── QUICKSTART.md                # Quick start guide
 ```
 
 ## Configuration
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
-| `--kms-host` | KMS service host | `https://kms.example.com` |
-| `--offer-host` | Offer service host | `http://offer.example.com:51052` |
-| `--request-payload` | JSON file or direct JSON | `request.json` or `'{"data":"value"}'` |
+| `--kms-host` | KMS service host (required) | `https://kms.example.com` |
+| `--offer-host` | Offer service host (required) | `http://offer.example.com:51052` |
+| `--request-payload` | JSON file or direct JSON (required) | `request.json` or `'{"data":"value"}'` |
 | `--insecure` | Disable SSL verification | Flag |
-| `--ca-cert` | CA certificate file | `ca.crt` |
-| `--client-cert` | Client certificate file | `client.crt` |
-| `--client-key` | Client private key file | `client.key` |
-| `--headers` | Custom HTTP headers | `'{"Auth":"token"}'` |
-| `--retries` | Number of retry attempts | `3` |
+| `--ca-cert` | CA certificate file (optional) | `ca.crt` |
+| `--client-cert` | Client certificate file (required) | `client.crt` |
+| `--client-key` | Client private key file (required) | `client.key` |
+| `--headers` | Custom HTTP headers (optional) | `'{"Auth":"token"}'` |
+| `--retries` | Number of retry attempts (optional) | `3` |
 | `--enable-verbose` | Enable verbose output | Flag |
 
 ## Examples
 
 - **CLI Examples**: See `QUICKSTART.md`
-- **Programmatic Examples**: Run `python3 programmatic_example.py`
-- **Test Examples**: See `tests/` directory
+- **Programmatic Examples**: Run `python3 programmatic_examples.py`
 
 ## Troubleshooting
 

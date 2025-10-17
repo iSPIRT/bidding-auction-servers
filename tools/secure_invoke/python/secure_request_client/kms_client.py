@@ -62,15 +62,22 @@ class KMSClient:
     def _configure_ssl(self):
         """Configure SSL settings for the session."""
         if self.insecure:
-            # Disable SSL verification
+            # Insecure mode: disable SSL verification, no client certificates required
             self.session.verify = False
-        else:
-            # Configure SSL certificates if provided
+            # Still configure client certificates if provided (for testing mTLS)
             if self.client_cert and self.client_key:
                 self.session.cert = (self.client_cert, self.client_key)
             elif self.client_cert:
                 self.session.cert = self.client_cert
+        else:
+            # Secure mode: require client certificates, CA certificate is optional
+            if not (self.client_cert and self.client_key):
+                raise ValueError("In secure mode, both client_cert and client_key are required")
             
+            # Configure client certificates (mandatory in secure mode)
+            self.session.cert = (self.client_cert, self.client_key)
+            
+            # Configure SSL verification (CA certificate is optional)
             if self.ca_cert:
                 self.session.verify = self.ca_cert
             else:

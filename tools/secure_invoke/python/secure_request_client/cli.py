@@ -84,10 +84,10 @@ class SecureRequestConfig:
         
         # SSL certificate validation
         if not self.insecure:
-            # In secure mode, we need at least a CA certificate or client certificates
-            if not self.ca_cert and not (self.client_cert and self.client_key):
-                print("✗ Error: SSL certificates are required when not in insecure mode")
-                print("  Either provide --ca-cert or both --client-cert and --client-key")
+            # In secure mode, client certificates are mandatory, CA certificate is optional
+            if not (self.client_cert and self.client_key):
+                print("✗ Error: In secure mode, both --client-cert and --client-key are required")
+                print("  CA certificate (--ca-cert) is optional")
                 print("  Or use --insecure to disable certificate verification")
                 return False
         

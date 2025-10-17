@@ -2,6 +2,9 @@
 **/__pycache__
 *.pyc
 *.so
+*.crt
+*.key
+*.pem
 
 *.egg-info/
 dist/
