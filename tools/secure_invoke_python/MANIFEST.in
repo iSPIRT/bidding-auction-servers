@@ -1,7 +1,0 @@
-include README.md
-include LICENSE
-include pyproject.toml
-include requirements.txt
-recursive-include secure_invoke/protos *.proto
-recursive-include examples *.py *.json *.jsonl
-
