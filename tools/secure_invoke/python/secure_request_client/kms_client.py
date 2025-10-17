@@ -94,7 +94,7 @@ class KMSClient:
         try:
             if self.verbose:
                 print(f"Fetching public keys from: {url}")
-            response = self.session.get(url, timeout=self.timeout, verify=False)
+            response = self.session.get(url, timeout=self.timeout)
             response.raise_for_status()
             
             # Parse the response

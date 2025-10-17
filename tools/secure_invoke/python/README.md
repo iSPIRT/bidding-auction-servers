@@ -5,27 +5,25 @@ A Python tool for secure communication with Privacy Sandbox offer request system
 ## Quick Start
 
 ```bash
-# 1. Set up environment
+# 1. Navigate to the project directory
 cd bidding-auction-servers/tools/secure_invoke/python
+
+# 2. Create and activate your python virtual environment
 python3 -m venv venv
 source venv/bin/activate
 
-# 2. Install the wheel
-pip install secure_invoke_crypto-0.1.0-py3-none-any.whl
+# 3. Run the automated installation script inside your python virtual environment
+./install.sh
 
-# 3. Extract shared libraries
-python -m zipfile -e secure_invoke_crypto-0.1.0-py3-none-any.whl temp_extract
-mkdir -p secure_request_client/lib
-cp temp_extract/secure_invoke_crypto/lib/*.so secure_request_client/lib/
-rm -rf temp_extract
-
-# 4. Set up environment
+# 4. Set up library path inside your python virtual environment
 export LD_LIBRARY_PATH=./secure_request_client/lib:$LD_LIBRARY_PATH
-export KMS_HOST=https://depa-inferencing-kms.centralindia.cloudapp.azure.com
-export OFFER_HOST=http://4.213.211.238:51052/v1/getbids
 
-# 5. Test minimal command
-python3 secure_request.py --kms-host $KMS_HOST --offer-host $OFFER_HOST --request-payload sample_offer_request.json --insecure
+# 5. Set up environment variables
+export KMS_HOST=https://depa-inferencing-kms.centralindia.cloudapp.azure.com
+export OFFER_HOST=http://20.219.207.27:51052/v1/getbids
+
+# 6. Use the CLI command
+secure-request --kms-host $KMS_HOST --offer-host $OFFER_HOST --request-payload sample_offer_request.json --insecure
 ```
 
 ## Features
@@ -39,15 +37,23 @@ python3 secure_request.py --kms-host $KMS_HOST --offer-host $OFFER_HOST --reques
 
 ## Installation
 
+### Quick Installation (Recommended)
+
 ```bash
 # Navigate to the project directory
 cd bidding-auction-servers/tools/secure_invoke/python
 
-# Create and activate virtual environment
-python3 -m venv venv
-source venv/bin/activate
+# Run the automated installation script
+./install.sh
+```
 
-# Install the wheel package
+### Manual Installation
+
+```bash
+# Navigate to the project directory
+cd bidding-auction-servers/tools/secure_invoke/python
+
+# Install the wheel package (contains pre-built shared libraries)
 pip install secure_invoke_crypto-0.1.0-py3-none-any.whl
 
 # Extract shared libraries from the wheel
@@ -55,6 +61,9 @@ python -m zipfile -e secure_invoke_crypto-0.1.0-py3-none-any.whl temp_extract
 mkdir -p secure_request_client/lib
 cp temp_extract/secure_invoke_crypto/lib/*.so secure_request_client/lib/
 rm -rf temp_extract
+
+# Install the CLI tool
+pip install -e .
 
 # Set library path
 export LD_LIBRARY_PATH=./secure_request_client/lib:$LD_LIBRARY_PATH
@@ -67,13 +76,17 @@ export LD_LIBRARY_PATH=./secure_request_client/lib:$LD_LIBRARY_PATH
 ```bash
 # Set up environment variables
 export KMS_HOST=https://depa-inferencing-kms.centralindia.cloudapp.azure.com
-export OFFER_HOST=http://4.213.211.238:51052/v1/getbids
+export OFFER_HOST=http://20.219.207.27:51052/v1/getbids
 
-# Basic usage (minimal test command)
-python3 secure_request.py --kms-host $KMS_HOST --offer-host $OFFER_HOST --request-payload sample_offer_request.json --insecure
+# Basic usage with the new CLI command
+secure-request \
+  --kms-host $KMS_HOST \
+  --offer-host $OFFER_HOST \
+  --request-payload sample_offer_request.json \
+  --insecure
 
 # With SSL certificates
-python3 secure_request.py \
+secure-request \
   --kms-host $KMS_HOST \
   --offer-host $OFFER_HOST \
   --request-payload sample_offer_request.json \
@@ -82,13 +95,16 @@ python3 secure_request.py \
   --client-key client.key
 
 # With custom headers and retries
-python3 secure_request.py \
+secure-request \
   --kms-host $KMS_HOST \
   --offer-host $OFFER_HOST \
   --request-payload sample_offer_request.json \
   --headers '{"Authorization": "Bearer token"}' \
   --retries 3 \
   --enable-verbose
+
+# Show help
+secure-request --help
 ```
 
 ### Programmatic Usage
@@ -125,10 +141,17 @@ python3 programmatic_example.py
 
 ```
 secure_invoke/python/
-├── secure_request.py              # Main CLI tool
+├── secure_request_client/         # Package with CLI and client modules
+│   ├── cli.py                    # CLI entry point (merged functionality)
+│   ├── crypto.py                 # Crypto functionality
+│   ├── kms_client.py            # KMS client
+│   ├── http_client.py           # HTTP client
+│   └── lib/                      # Shared libraries (.so files)
 ├── programmatic_example.py       # Programmatic usage examples
-├── sample_offer_request.json         # Sample request file
-├── tests/                        # Unit tests
+├── sample_offer_request.json    # Sample request file
+├── setup.py                     # Package setup
+├── install.sh                   # Installation script
+└── tests/                       # Unit tests
 ```
 
 ## Configuration

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Secure Request Client
+Secure Request Client CLI
 
 A command-line tool for secure request operations with support for:
 - Direct offer request payload input or file-based payloads
@@ -22,7 +22,7 @@ from typing import Dict, Optional, Any
 from io import StringIO
 
 # Add the current directory to Python path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from secure_request_client import OfferRequestClient
 from secure_request_client.kms_client import KMSClient, KMSClientError
@@ -308,11 +308,9 @@ class SecureRequestClient:
                 return server_response
                 
         except Exception as e:
-            self.log(f"Error processing single request: {e}", "ERROR")
-            print(f"✗ Error processing single request: {e}")
+            self.log(f"Error processing request: {e}", "ERROR")
+            print(f"✗ Error processing request: {e}")
             return None
-    
-    
     
     def run(self) -> bool:
         """Run the Secure Request Client."""
@@ -391,16 +389,16 @@ def main():
         epilog="""
 Examples:
   # Using request file with SSL certificates (required)
-  python secure_request.py --kms-host 127.0.0.1:8000 --offer-host 127.0.0.1:51052 --request-payload request.json --ca-cert ca.crt
+  secure-request --kms-host 127.0.0.1:8000 --offer-host 127.0.0.1:51052 --request-payload request.json --ca-cert ca.crt
 
   # Using direct JSON payload with client certificates
-  python secure_request.py --kms-host 127.0.0.1:8000 --offer-host 127.0.0.1:51052 --request-payload '{"client_type":"CLIENT_TYPE_BROWSER",...}' --client-cert client.crt --client-key client.key
+  secure-request --kms-host 127.0.0.1:8000 --offer-host 127.0.0.1:51052 --request-payload '{"client_type":"CLIENT_TYPE_BROWSER",...}' --client-cert client.crt --client-key client.key
 
   # Insecure mode (no SSL certificates required)
-  python secure_request.py --kms-host 127.0.0.1:8000 --offer-host 127.0.0.1:51052 --request-payload request.json --insecure
+  secure-request --kms-host 127.0.0.1:8000 --offer-host 127.0.0.1:51052 --request-payload request.json --insecure
 
   # With custom headers and retries
-  python secure_request.py --kms-host 127.0.0.1:8000 --offer-host 127.0.0.1:51052 --request-payload request.json --ca-cert ca.crt --headers '{"Authorization":"Bearer token"}' --retries 3 --enable-verbose
+  secure-request --kms-host 127.0.0.1:8000 --offer-host 127.0.0.1:51052 --request-payload request.json --ca-cert ca.crt --headers '{"Authorization":"Bearer token"}' --retries 3 --enable-verbose
         """
     )
     
