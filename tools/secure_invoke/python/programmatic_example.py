@@ -17,7 +17,7 @@ from pathlib import Path
 # Add the current directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from secure_request import SecureRequestClient, SecureRequestConfig
+from secure_request_client.cli import SecureRequestClient, SecureRequestConfig
 
 
 def main():  
@@ -28,7 +28,7 @@ def main():
     print("\n=== Example 1: Basic Usage ===")
     config = SecureRequestConfig()
     config.kms_host = "https://depa-inferencing-kms.centralindia.cloudapp.azure.com"
-    config.offer_host = "http://4.213.211.238:51052/v1/getbids"
+    config.offer_host = "http://20.219.207.27:51052/v1/getbids"
     config.insecure = True
     config.request_payload = json.dumps({
         "client_type": "CLIENT_TYPE_BROWSER",
