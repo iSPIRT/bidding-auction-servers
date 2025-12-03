@@ -1,0 +1,17 @@
+/venv
+**/__pycache__
+*.pyc
+*.so
+*.crt
+*.key
+*.pem
+
+*.egg-info/
+dist/
+build/
+*.egg
+temp_extract/
+*.tmp
+*.temp
+.vscode/
+.cursor/

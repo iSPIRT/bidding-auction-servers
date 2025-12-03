@@ -215,7 +215,8 @@ elif [[ ${CPU_PROF} -eq 1 ]]; then
   --cpu-profiler-filename bidding.prof --cpu-profiler-signal 12 \
   --cmd "${SERVER_START_CMD}"
 else
-  docker_image_uri="${DOCKER_IMAGE_URI:-$(docker load -i dist/debian/bidding_service_image.tar | sed -nr "s/^Loaded image: (.*)$/\1/p")}"
+  # docker_image_uri="${DOCKER_IMAGE_URI:-$(docker load -i dist/debian/bidding_service_image.tar | sed -nr "s/^Loaded image: (.*)$/\1/p")}"
+  docker_image_uri=ispirt.azurecr.io/depa-inferencing/local/bidding-service:latest
   if [[ -n "${GENERATE_BID_FILEPATH}" ]]; then
     DOCKER_RUN_ARGS+=(
       "--volume=${PROJECT_ROOT}/${GENERATE_BID_FILEPATH}:/generateBid.js"
