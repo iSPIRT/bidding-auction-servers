@@ -17,10 +17,10 @@ pip install secure_request-<version_number>-py3-none-any.whl  # (recommended) in
 # alternatively, install from this directory
 pip install .  # or `pip install -e .` for development
 
-# 4. Set up library path (automatically handled by the package)
+# 4. Set up library path inside your python virtual environment
 export LD_LIBRARY_PATH=$(python -c "import secure_request_client; import os; print(os.path.join(os.path.dirname(secure_request_client.__file__), 'lib'))"):$LD_LIBRARY_PATH
 
-# 5. Set up environment variables for KMS and Offer service hosts
+# 5. Set up environment variables for Key Management System (KMS) and Offer service hosts
 export KMS_HOST=https://<kms_host_url>  # eg. export KMS_HOST=https://depa-inferencing-kms.centralindia.cloudapp.azure.com
 export OFFER_HOST=http://<offer_host_ip>:<port>/v1/getbids  # eg. export OFFER_HOST=http://20.219.207.27:51052/v1/getbids
 
