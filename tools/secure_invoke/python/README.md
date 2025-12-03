@@ -13,6 +13,8 @@ python3 -m venv <venv_name> # e.g. python3 -m venv venv
 source <venv_name>/bin/activate # e.g. source venv/bin/activate
 
 # 3. Install the CLI tool
+pip install secure_request-<version_number>-py3-none-any.whl  # (recommended) install directly from the wheel file released 
+# alternatively, install from this directory
 pip install .  # or `pip install -e .` for development
 
 # 4. Set up library path inside your python virtual environment
