@@ -30,12 +30,11 @@ absl::StatusOr<GenerateBidByobDispatchClient>
 GenerateBidByobDispatchClient::Create(int num_workers) {
   PS_ASSIGN_OR_RETURN(
       auto byob_service,
-      roma_service::ByobGenerateProtectedAudienceBidService<>::Create(
+      (roma_service::ByobGenerateProtectedAudienceBidService<>::Create(
           {
-          //  .lib_mounts = "",
               .enable_seccomp_filter = true,
           },
-          /*mode=*/Mode::kModeNsJailSandbox);
+          /*mode=*/Mode::kModeNsJailSandbox)));
   return GenerateBidByobDispatchClient(std::move(byob_service), num_workers);
 }
 

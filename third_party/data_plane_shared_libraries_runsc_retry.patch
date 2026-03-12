@@ -1,0 +1,17 @@
+--- a/src/roma/byob/container/Dockerfile.runsc
++++ b/src/roma/byob/container/Dockerfile.runsc
+@@ -76,13 +76,7 @@
+ WORKDIR /workspace/gvisor
+ RUN --mount=type=cache,target=/root/.cache/bazel \
+   --mount=type=cache,target=/bazel_root/gvisor_build \
+-  bazel build \
+-  --cache_test_results=no \
+-  --curses=no \
+-  --progress_report_interval=10 \
+-  --show_progress_rate_limit=10 \
+-  //runsc \
+-  && cp /workspace/gvisor/bazel-bin/runsc/runsc_/runsc /tmp
++  bash -c 'for i in 1 2 3 4 5; do bazel build --cache_test_results=no --curses=no --progress_report_interval=10 --show_progress_rate_limit=10 //runsc && cp /workspace/gvisor/bazel-bin/runsc/runsc_/runsc /tmp && exit 0; echo "Bazel fetch failed (attempt $i), retrying in 30s..."; sleep 30; done; exit 1'
+ 
+ #
+ # export the runsc binary
