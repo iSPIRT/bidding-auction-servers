@@ -234,6 +234,9 @@ else
 fi
 if [[ ${WITH_DOCKER_SOCK} -eq 1 ]]; then
   DOCKER_RUN_ARGS+=("--volume=/var/run/docker.sock:/var/run/docker.sock")
+  # docker engine 29+ requires API 1.44; older clients in the image report 1.42
+  # force docker client to use 1.44 when talking to host daemon
+  DOCKER_RUN_ARGS+=("--env=DOCKER_API_VERSION=1.44")
 fi
 for evar in "${ENV_VARS[@]}"
 do

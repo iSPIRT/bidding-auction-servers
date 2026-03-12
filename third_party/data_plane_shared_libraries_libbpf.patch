@@ -1,0 +1,10 @@
+--- a/src/roma/byob/container/Dockerfile.runsc
++++ b/src/roma/byob/container/Dockerfile.runsc
+@@ -12,6 +12,6 @@
+   crossbuild-essential-amd64="12.9*" \
+   crossbuild-essential-arm64="12.9*" \
+   gnupg="2.2.*" \
+-  libbpf-dev="1:1.1.0-*" \
++  libbpf-dev \
+   "$(test "${TARGETARCH}" = amd64 && echo libc6-dev-i386="2.36-*" || true)" \
+   lsb-release="12.0-*" \

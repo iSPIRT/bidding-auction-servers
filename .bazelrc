@@ -1,6 +1,7 @@
 build --announce_rc
 build --verbose_failures
 build --config=clang
+build --action_env=DOCKER_API_VERSION
 build --compilation_mode=opt
 build --output_filter='^//((?!(third_party):).)*$'
 build --color=yes

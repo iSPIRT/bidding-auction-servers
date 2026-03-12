@@ -1,12 +1,15 @@
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
 
 ### register Python toolchain -- note this toolchain defines the path to a specific version of python
 load("//builders/bazel:deps.bzl", "python_deps", "python_register_toolchains")
 
 http_archive(
     name = "io_bazel_rules_docker",
-    sha256 = "b1e80761a8a8243d03ebca8845e9cc1ba6c82ce7c5179ce2b295cd36f7e394bf",
-    urls = ["https://github.com/bazelbuild/rules_docker/releases/download/v0.25.0/rules_docker-v0.25.0.tar.gz"],
+    sha256 = "f6dcb97e992f13bc9effd794e9bb300f06b0dadc88061f81ae68d8d5994be964",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_docker/releases/download/v0.26.0/rules_docker-v0.26.0.tar.gz",
+        "https://github.com/bazelbuild/rules_docker/releases/download/v0.26.0/rules_docker-v0.26.0.tar.gz",
+    ],
 )
 
 python_deps()
@@ -21,6 +24,12 @@ http_archive(
     urls = [
         "https://github.com/privacysandbox/data-plane-shared-libraries/archive/b442136d9cbe2872d8d55da95d176fd9a2d77b68.zip",
     ],
+    patches = [
+        "//third_party:data_plane_shared_libraries_libbpf.patch",
+        "//third_party:data_plane_shared_libraries_runsc_retry.patch",
+    ],
+    patch_args = ["-p1"],
+    patch_tool = "patch",
 )
 
 load(
