@@ -1,0 +1,39 @@
+diff --git a/build_defs/cc/v8.bzl b/build_defs/cc/v8.bzl
+index 1111111..2222222 100644
+--- a/build_defs/cc/v8.bzl
++++ b/build_defs/cc/v8.bzl
+@@ -36,13 +36,13 @@ def import_v8():
+     http_archive(
+         name = "com_googlesource_chromium_icu",
+         build_file = "@v8//:bazel/BUILD.icu",
+         patch_cmds = ["find source -name BUILD.bazel | xargs rm"],
+         # ICU 74 for Chromium: https://chromium.googlesource.com/chromium/deps/icu/+/refs/heads/chromium/74staging
+         # sha256 is unstable for this url
+-        urls = ["https://chromium.googlesource.com/chromium/deps/icu/+archive/ef208e4799590d594bf482f05d6575a73423e184.tar.gz"],
++        urls = ["file:///src/workspace/third_party/chromium_icu.tar.gz"],
+     )
+ 
+     native.bind(
+@@ -55,7 +55,7 @@ def import_v8():
+     http_archive(
+         name = "com_googlesource_chromium_base_trace_event_common",
+         build_file = "@v8//:bazel/BUILD.trace_event_common",
+-        urls = ["https://chromium.googlesource.com/chromium/src/base/trace_event/common.git/+archive/29ac73db520575590c3aceb0a6f1f58dda8934f6.tar.gz"],
++        urls = ["file:///src/workspace/third_party/trace_event_common.tar.gz"],
+     )
+ 
+     native.bind(
+diff --git a/third_party/deps2.bzl b/third_party/deps2.bzl
+index 3333333..4444444 100644
+--- a/third_party/deps2.bzl
++++ b/third_party/deps2.bzl
+@@ -101,7 +101,7 @@ def _quiche_deps():
+     maybe(
+         http_archive,
+         name = "com_google_googleurl",
+         patch_args = ["-p1"],
+         patches = [Label("//third_party:googleurl.patch")],
+         # sha256 is unstable for this url
+-        urls = ["https://quiche.googlesource.com/googleurl/+archive/9cdb1f4d1a365ebdbcbf179dadf7f8aa5ee802e7.tar.gz"],
++        urls = ["file:///src/workspace/third_party/googleurl-9cdb1f4d.tar.gz"],
+     )

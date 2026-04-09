@@ -24,11 +24,11 @@ trap _print_runtime EXIT
 function _print_runtime() {
   declare -r -i STATUS=$?
   declare -r END=$(date +%s)
-  /usr/bin/env LC_ALL=en_US.UTF-8 printf "\nbuild_and_test_all_in_docker runtime: %'ds\n" $((END - START)) >/dev/stderr
+  /usr/bin/env LC_ALL=en_US.UTF-8 printf "\nbuild_and_test_all_in_docker runtime: %'ds\n" $((END - START)) >&2
   if [[ ${STATUS} -eq 0 ]]; then
-    printf "build_and_test_in_docker completed successfully\n" &>/dev/stderr
+    printf "build_and_test_in_docker completed successfully\n" >&2
   else
-    printf "Error: build_and_test_in_docker completed with status code: %s\n" "${STATUS}" &>/dev/stderr
+    printf "Error: build_and_test_in_docker completed with status code: %s\n" "${STATUS}" >&2
     if [[ -v KOKORO_ARTIFACTS_DIR ]]; then
       sleep 5s
     fi
@@ -204,25 +204,25 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ${#SERVICES[@]} -eq 0 ]]; then
-  printf "Error: A minimum of one --service-path must be specified\n" &>/dev/stderr
+  printf "Error: A minimum of one --service-path must be specified\n" >&2
   usage
 fi
 if [[ -z ${PLATFORM} ]]; then
-  printf "Error: --platform must be specified\n" &>/dev/stderr
+  printf "Error: --platform must be specified\n" >&2
   usage
 fi
 if [[ -z ${INSTANCE} ]]; then
-  printf "Error: --instance must be specified\n" &>/dev/stderr
+  printf "Error: --instance must be specified\n" >&2
   usage
 fi
 if [[ ${PLATFORM} = gcp ]]; then
   if [[ ${GCP_SKIP_IMAGE_UPLOAD} -eq 0 ]]; then
     if [[ -z ${GCP_IMAGE_TAG} ]]; then
-      printf "Error: --gcp-image-tag must be specified\n" &>/dev/stderr
+      printf "Error: --gcp-image-tag must be specified\n" >&2
       usage
     fi
     if [[ -z ${GCP_IMAGE_REPO} ]]; then
-      printf "Error: --gcp-image-repo must be specified\n" &>/dev/stderr
+      printf "Error: --gcp-image-repo must be specified\n" >&2
       usage
     fi
   fi
@@ -230,11 +230,11 @@ fi
 if [[ ${PLATFORM} = azure ]]; then
   if [[ ${AZURE_SKIP_IMAGE_UPLOAD} -eq 0 ]]; then
     if [[ -z ${AZURE_IMAGE_TAG} ]]; then
-      printf "Error: --azure-image-tag must be specified\n" &>/dev/stderr
+      printf "Error: --azure-image-tag must be specified\n" >&2
       usage
     fi
     if [[ -z ${AZURE_IMAGE_REPO} ]]; then
-      printf "Error: --azure-image-repo must be specified\n" &>/dev/stderr
+      printf "Error: --azure-image-repo must be specified\n" >&2
       usage
     fi
   fi
@@ -325,7 +325,7 @@ function invoke_targets() {
   trap _collect_logs EXIT
   function _collect_logs() {
     local -r -i STATUS=\$?
-    printf 'Collecting bazel logs... (status: %d)\n' \${STATUS} &>/dev/stderr
+    printf 'Collecting bazel logs... (status: %d)\n' \${STATUS} >&2
     bazel ${BAZEL_STARTUP_ARGS} run ${BAZEL_EXTRA_ARGS} //:collect-logs
     exit \${STATUS}
   }
@@ -362,7 +362,7 @@ function build_service_for_gcp() {
   # note: use relative path to dist
   declare -r docker_image=dist/debian/${service}_image.tar
   if ! [[ -s ${WORKSPACE}/${docker_image} ]]; then
-    printf "Error: docker image tar file not found: %s\n" "${docker_image}" &>/dev/stderr
+    printf "Error: docker image tar file not found: %s\n" "${docker_image}" >&2
     exit 1
   fi
   create_gcp_dist "${docker_image}"
@@ -383,7 +383,7 @@ function build_service_for_azure() {
   # note: use relative path to dist
   declare -r docker_image=dist/debian/${service}_image.tar
   if ! [[ -s ${WORKSPACE}/${docker_image} ]]; then
-    printf "Error: docker image tar file not found: %s\n" "${docker_image}" &>/dev/stderr
+    printf "Error: docker image tar file not found: %s\n" "${docker_image}" >&2
     exit 1
   fi
   create_azure_dist "${docker_image}"
@@ -403,7 +403,7 @@ function load_service_image() {
   declare -r service="$1"
   declare -r docker_image=dist/debian/${service}_image.tar
   if ! [[ -s ${WORKSPACE}/${docker_image} ]]; then
-    printf "Error: docker image tar file not found: %s\n" "${docker_image}" &>/dev/stderr
+    printf "Error: docker image tar file not found: %s\n" "${docker_image}" >&2
     exit 1
   fi
 
@@ -440,7 +440,7 @@ if [[ ${NO_PLATFORM_BUILD} -eq 0 ]]; then
       done
       ;;
     *)
-      printf "Unsupported platform: %s\n" "${PLATFORM}" >/dev/stderr
+      printf "Unsupported platform: %s\n" "${PLATFORM}" >&2
       exit 1
       ;;
   esac

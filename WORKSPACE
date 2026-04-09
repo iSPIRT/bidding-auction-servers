@@ -21,6 +21,10 @@ http_archive(
     urls = [
         "https://github.com/privacysandbox/data-plane-shared-libraries/archive/2619bb408bfe6c816ba2c7b28038f893f4809781.zip",
     ],
+    # Redirect googlesource.com archive URLs to local files to avoid HTTP 429 rate limits.
+    # The archives in third_party/ were cloned via git from the same commits.
+    patch_args = ["-p1"],
+    patches = ["//third_party:googlesource_local_overrides.patch"],
 )
 
 load(

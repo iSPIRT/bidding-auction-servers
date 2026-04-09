@@ -62,6 +62,7 @@ venv/
 
 # Docker
 docker-buildx-*.log
+.docker-static/
 
 core
 
