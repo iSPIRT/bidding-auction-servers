@@ -267,7 +267,7 @@ resource "google_compute_instance_template" "backends" {
     scopes = ["https://www.googleapis.com/auth/cloud-platform"]
   }
   metadata = merge(var.backend_service_name == "bidding" ? {
-    tee-added-capabilities = "[\"CAP_SYS_ADMIN\"]"
+    tee-added-capabilities = "[\"CAP_SYS_ADMIN\",\"CAP_SYS_PTRACE\"]"
     tee-cgroup-ns          = true
     } : {}, {
     mesh-name                        = var.mesh_name

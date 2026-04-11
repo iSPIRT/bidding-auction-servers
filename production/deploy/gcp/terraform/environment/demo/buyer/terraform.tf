@@ -25,4 +25,9 @@ terraform {
       version = "5.36.0"
     }
   }
+
+  backend "gcs" {
+    bucket = "depa-inferencing-ci-tfstate"
+    prefix = "buyer"
+  }
 }
