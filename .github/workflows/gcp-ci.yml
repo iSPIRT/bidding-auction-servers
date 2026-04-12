@@ -1,0 +1,57 @@
+name: GCP CI
+
+permissions:
+  contents: read
+  id-token: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply_project_setup:
+        description: "Run project_setup_utils Terraform (APIs, DNS, certs, workload SA). Requires delegated DNS for DOMAIN variable; use once or when infra changes."
+        type: boolean
+        default: false
+      run_cleanup:
+        description: "Run Terraform destroy on the buyer stack after tests (does not destroy project_setup_utils)."
+        type: boolean
+        default: true
+      image_repo:
+        description: "Container image path prefix (--gcp-image-repo); must match buyer Terraform image_repo."
+        type: string
+        default: ispirt.azurecr.io/depainferencing/gcp
+      image_tag:
+        description: "Image tag for bidding_service and buyer_frontend_service."
+        type: string
+        default: nonprod-4.10.0
+      test_mode:
+        description: "Buyer test_mode runtime flag (string true/false in tfvars). Reserved for future non-test deploys."
+        type: boolean
+        default: true
+
+jobs:
+  deploy:
+    name: Deploy (GCP)
+    uses: ./.github/workflows/gcp-deploy.yml
+    secrets: inherit
+    with:
+      apply_project_setup: ${{ inputs.apply_project_setup }}
+      image_repo: ${{ inputs.image_repo }}
+      image_tag: ${{ inputs.image_tag }}
+      test_mode: ${{ inputs.test_mode }}
+
+  test:
+    name: Test (GCP)
+    needs: deploy
+    uses: ./.github/workflows/gcp-test.yml
+    secrets: inherit
+
+  cleanup:
+    name: Cleanup (GCP)
+    needs: [deploy, test]
+    if: always() && inputs.run_cleanup && needs.deploy.result == 'success'
+    uses: ./.github/workflows/gcp-cleanup.yml
+    secrets: inherit
+    with:
+      image_repo: ${{ inputs.image_repo }}
+      image_tag: ${{ inputs.image_tag }}
+      test_mode: ${{ inputs.test_mode }}

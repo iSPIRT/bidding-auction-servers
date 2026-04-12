@@ -1,0 +1,63 @@
+name: GCP Offer Services — test
+
+permissions:
+  contents: read
+  id-token: write
+
+on:
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      OPERATOR: ispirt
+      ENV: ci
+      REGION: us-central1
+    steps:
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Global load balancer backend health
+        run: |
+          set -euo pipefail
+          test -n "${GCP_PROJECT_ID}" || (echo "Set variable GCP_PROJECT_ID" && exit 1)
+          echo "## Backend service health" >> "$GITHUB_STEP_SUMMARY"
+          for SVC in xlb mesh; do
+            NAME="${OPERATOR}-${ENV}-${SVC}-backend-service"
+            echo "### ${NAME}" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            gcloud compute backend-services get-health "${NAME}" \
+              --project="${GCP_PROJECT_ID}" --global 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Regional MIG instances (BFE, bidding, collector)
+        run: |
+          set -euo pipefail
+          for ROLE in bfe bidding collector; do
+            MIG="${OPERATOR}-${ENV}-${ROLE}-${REGION}-mig"
+            echo "## ${MIG}" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            gcloud compute instance-groups managed list-instances "${MIG}" \
+              --region="${REGION}" --project="${GCP_PROJECT_ID}" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || echo "(MIG not found or still creating)" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: VMs by label
+        run: |
+          set -euo pipefail
+          echo "## Instances (operator=ispirt, environment=ci)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          gcloud compute instances list --project="${GCP_PROJECT_ID}" \
+            --filter="labels.environment=${ENV} AND labels.operator=${OPERATOR}" \
+            --format="table(name,zone,status,labels.service)" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
