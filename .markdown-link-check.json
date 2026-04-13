@@ -7,6 +7,9 @@
       "pattern": "^http://go/"
     },
     {
+      "pattern": "^http://shortn/"
+    },
+    {
       "pattern": "^/tools/"
     },
     {
@@ -17,6 +20,9 @@
     },
     {
       "pattern": "udf/Execution%20Environment%20and%20Interface.md"
+    },
+    {
+      "pattern": "https://team.git.corp.google.com/"
     }
   ],
   "replacementPatterns": [

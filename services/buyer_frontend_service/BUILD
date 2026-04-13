@@ -13,7 +13,7 @@
 # limitations under the License.
 
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
-load("//:config.bzl", "ENABLE_CORE_DUMPS_DEFINES", "IS_PROD_BUILD_DEFINES")
+load("//:config.bzl", "ENABLE_CORE_DUMPS_DEFINES", "IS_PARC_BUILD_DEFINES", "IS_PROD_BUILD_DEFINES")
 
 cc_library(
     name = "runtime_flags",
@@ -57,6 +57,7 @@ cc_library(
         "//services/common/util:request_response_constants",
         "//services/common/util/priority_vector:priority_vector_utils",
         "//services/seller_frontend_service/util:buyer_input_proto_utils",
+        "//services/seller_frontend_service/util:chaffing_utils",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
@@ -87,6 +88,7 @@ cc_library(
         "//services/common/clients/bidding_server:async_client",
         "//services/common/clients/http:multi_curl_http_fetcher_async",
         "//services/common/metric:server_definition",
+        "//services/seller_frontend_service/util:chaffing_utils",
         "@com_github_grpc_grpc//:grpc++",
         "@google_privacysandbox_servers_common//src/concurrent:executor",
         "@google_privacysandbox_servers_common//src/encryption/key_fetcher:key_fetcher_manager",
@@ -106,8 +108,10 @@ cc_test(
         "//api:bidding_auction_servers_cc_proto_builder",
         "//services/buyer_frontend_service/util:bidding_signals",
         "//services/buyer_frontend_service/util:buyer_frontend_test_utils",
+        "//services/common/chaffing:mock_moving_median",
         "//services/common/chaffing:transcoding_utils",
         "//services/common/encryption:mock_crypto_client_wrapper",
+        "//services/common/random:mock_rng",
         "//services/common/test:mocks",
         "//services/common/test:random",
         "//services/common/test/utils:proto_utils",
@@ -125,7 +129,7 @@ cc_binary(
     linkopts = [
         "-Wl,-rpath,\\$$ORIGIN/../lib",
     ],
-    local_defines = ENABLE_CORE_DUMPS_DEFINES + IS_PROD_BUILD_DEFINES,
+    local_defines = ENABLE_CORE_DUMPS_DEFINES + IS_PROD_BUILD_DEFINES + IS_PARC_BUILD_DEFINES,
     malloc = "@com_google_tcmalloc//tcmalloc",
     visibility = ["//visibility:public"],
     deps = [
@@ -181,6 +185,7 @@ cc_test(
         "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@google_privacysandbox_servers_common//src/concurrent:executor",
         "@google_privacysandbox_servers_common//src/encryption/key_fetcher/mock:mock_key_fetcher_manager",
     ],
 )

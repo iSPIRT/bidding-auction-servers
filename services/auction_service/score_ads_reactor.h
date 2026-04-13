@@ -36,6 +36,7 @@
 #include "services/auction_service/data/runtime_config.h"
 #include "services/auction_service/reporting/reporting_helper.h"
 #include "services/auction_service/reporting/reporting_response.h"
+#include "services/common/attestation/adtech_enrollment_cache.h"
 #include "services/common/clients/code_dispatcher/request_context.h"
 #include "services/common/clients/code_dispatcher/v8_dispatch_client.h"
 #include "services/common/code_dispatch/code_dispatch_reactor.h"
@@ -48,8 +49,8 @@
 
 namespace privacy_sandbox::bidding_auction_servers {
 
-inline constexpr char kNoAdsWithValidScoringSignals[] =
-    "No ads with valid scoring signals.";
+inline constexpr char kNoAdsWithValidDispatchRequests[] =
+    "No ads could be converted to dispatch requests.";
 inline constexpr char kNoValidComponentAuctions[] =
     "No component auction results in request.";
 // An aggregate of the data we track when scoring all the ads.
@@ -139,7 +140,8 @@ class ScoreAdsReactor
       server_common::KeyFetcherManagerInterface* key_fetcher_manager,
       CryptoClientWrapperInterface* crypto_client,
       const AsyncReporter& async_reporter,
-      const AuctionServiceRuntimeConfig& runtime_config);
+      const AuctionServiceRuntimeConfig& runtime_config,
+      AdtechEnrollmentCacheInterface* adtech_attestation_cache = nullptr);
 
   // Initiates the asynchronous execution of the ScoreAdsRequest.
   void Execute() override;
@@ -200,16 +202,42 @@ class ScoreAdsReactor
   absl::btree_map<std::string, std::string> GetLoggingContext(
       const ScoreAdsRequest::ScoreAdsRawRequest& score_ads_request);
 
-  // Performs debug reporting for all scored ads by the seller, except for the
-  // winning ad in component auctions.
+  // Performs debug reporting for all ads scored by the seller.
   // These objects are expected to be set before the function call:
   // - ad_scores_
   // - post_auction_signals_
   void PerformDebugReporting();
 
-  // Populates the debug report urls in the response, only for the winning
-  // interest group in component auctions, when debug reporting is enabled.
-  void PopulateDebugReportUrlsForComponentAuctionWinner();
+  // Helper functions to perform downsampling on filtered debug report urls and
+  // add the debug reports for the selected url(s) to the response:
+  // a) Single-seller auction: Maximum one debug url of either type.
+  // b) Component auction: Maximum one debug win and one debug loss url.
+  //
+  // A debug report with an empty url is added to the response when the client
+  // might need to put the seller adtech in cooldown due to a debug url that
+  // failed sampling.
+  void PerformSampledDebugReporting();
+  void PerformSampledDebugReportingForComponentAuction();
+  void SampleDebugWinReportForComponentAuctionWinner(
+      long& current_size_all_debug_urls_chars);
+  void SampleDebugLossReportForComponentAuctionAd(
+      const ScoreAdsResponse::AdScore& ad_score, bool is_winning_ig,
+      bool& loss_url_selected, bool& put_seller_in_cooldown_for_confirmed_loss,
+      long& current_size_all_debug_urls_chars);
+
+  // Helper functions to perform debug reporting with downsampling disabled.
+  // Debug reports for the component auction winning ad are added to the
+  // response. The appropriate win or loss debug pings are sent from the server
+  // for all other ads.
+  void PerformUnsampledDebugReporting();
+  void PerformUnsampledDebugReportingForComponentAuctionWinner();
+
+  // Helper function to add to the response the debug report object
+  // corresponding to a seller debug url that was not pinged by the server.
+  void AddSellerDebugReportToResponse(
+      absl::string_view debug_url, bool is_win_report, bool is_component_win,
+      long& current_size_all_debug_urls_chars,
+      std::optional<DebugReportingPlaceholder> placeholder_data = std::nullopt);
 
   // These objects are expected to be set before the function call:
   // - post_auction_signals_
@@ -403,6 +431,9 @@ class ScoreAdsReactor
                               const std::vector<ScoredAdData>& parsed_responses,
                               absl::string_view id);
 
+  // Attest fDO destinations against API enrollment list.
+  void AttestDebugUrls();
+
   CLASS_CANCELLATION_WRAPPER(ReportResultCallback, enable_cancellation_,
                              context_, FinishWithStatus)
 
@@ -442,7 +473,7 @@ class ScoreAdsReactor
   std::unique_ptr<ScoreAdsBenchmarkingLogger> benchmarking_logger_;
   const AsyncReporter& async_reporter_;
   bool enable_seller_debug_url_generation_;
-  std::string roma_timeout_ms_;
+  std::string roma_timeout_duration_;
   RequestLogContext log_context_;
   RomaRequestContextFactory roma_request_context_factory_;
 
@@ -472,6 +503,7 @@ class ScoreAdsReactor
   std::string seller_origin_;
   int max_allowed_size_debug_url_chars_;
   long max_allowed_size_all_debug_urls_chars_;
+  int debug_reporting_sampling_upper_bound_;
   BuyerReportingDispatchRequestData buyer_reporting_dispatch_request_data_ = {
       .log_context = log_context_};
   rapidjson::Document seller_device_signals_;
@@ -497,6 +529,7 @@ class ScoreAdsReactor
   absl::flat_hash_set<std::string>
       protected_app_signals_buyers_with_report_win_enabled_;
   std::string winning_ad_dispatch_id_;
+  AdtechEnrollmentCacheInterface* adtech_attestation_cache_;
 };
 }  // namespace privacy_sandbox::bidding_auction_servers
 #endif  // SERVICES_AUCTION_SERVICE_SCORE_ADS_REACTOR_H_

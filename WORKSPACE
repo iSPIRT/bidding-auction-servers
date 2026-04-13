@@ -15,11 +15,11 @@ python_register_toolchains("//builders/bazel")
 
 http_archive(
     name = "google_privacysandbox_servers_common",
-    # 2025-02-11
-    sha256 = "96ad94b628d009e229e2fd58d6cb117e29331e1e5bccc19fccf9634eb5943fe6",
-    strip_prefix = "data-plane-shared-libraries-b442136d9cbe2872d8d55da95d176fd9a2d77b68",
+    # 2025-04-10
+    sha256 = "b919aa7dbda1647fbf5a45a9b21553877fa16ca739a27b3484bb080d28d5636c",
+    strip_prefix = "data-plane-shared-libraries-2619bb408bfe6c816ba2c7b28038f893f4809781",
     urls = [
-        "https://github.com/privacysandbox/data-plane-shared-libraries/archive/b442136d9cbe2872d8d55da95d176fd9a2d77b68.zip",
+        "https://github.com/privacysandbox/data-plane-shared-libraries/archive/2619bb408bfe6c816ba2c7b28038f893f4809781.zip",
     ],
 )
 
@@ -85,6 +85,14 @@ http_archive(
     ],
 )
 
+http_archive(
+    name = "com_facebook_zstd",
+    build_file = "//third_party:zstd.BUILD",
+    sha256 = "8c29e06cf42aacc1eafc4077ae2ec6c6fcb96a626157e0593d5e82a34fd403c1",
+    strip_prefix = "zstd-1.5.6",
+    urls = ["https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz"],
+)
+
 ### Initialize Python headers
 
 http_archive(
@@ -115,8 +123,8 @@ local_repository(
 ### Initialize Tensorflow sidecar local respository
 
 local_repository(
-    name = "tensorflow_v2_14_0",
-    path = "services/inference_sidecar/modules/tensorflow_v2_14_0",
+    name = "tensorflow_v2_17_0",
+    path = "services/inference_sidecar/modules/tensorflow_v2_17_0",
 )
 
 http_archive(

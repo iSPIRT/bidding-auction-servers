@@ -40,8 +40,16 @@ inline constexpr absl::string_view
         "AUCTION_TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES";
 inline constexpr absl::string_view SCORING_SIGNALS_FETCH_MODE =
     "SCORING_SIGNALS_FETCH_MODE";
+inline constexpr absl::string_view CURL_AUCTION_NUM_WORKERS =
+    "CURL_AUCTION_NUM_WORKERS";
+inline constexpr absl::string_view CURL_AUCTION_QUEUE_MAX_WAIT_MS =
+    "CURL_AUCTION_QUEUE_MAX_WAIT_MS";
+inline constexpr absl::string_view CURL_AUCTION_WORK_QUEUE_LENGTH =
+    "CURL_AUCTION_WORK_QUEUE_LENGTH";
+inline constexpr absl::string_view ENABLE_FDO_ATTESTATION =
+    "ENABLE_FDO_ATTESTATION";
 
-inline constexpr int kNumRuntimeFlags = 10;
+inline constexpr int kNumRuntimeFlags = 14;
 inline constexpr std::array<absl::string_view, kNumRuntimeFlags> kFlags = {
     PORT,
     HEALTHCHECK_PORT,
@@ -53,6 +61,10 @@ inline constexpr std::array<absl::string_view, kNumRuntimeFlags> kFlags = {
     AUCTION_TCMALLOC_BACKGROUND_RELEASE_RATE_BYTES_PER_SECOND,
     AUCTION_TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES,
     SCORING_SIGNALS_FETCH_MODE,
+    CURL_AUCTION_NUM_WORKERS,
+    CURL_AUCTION_QUEUE_MAX_WAIT_MS,
+    CURL_AUCTION_WORK_QUEUE_LENGTH,
+    ENABLE_FDO_ATTESTATION,
 };
 
 inline std::vector<absl::string_view> GetServiceFlags() {

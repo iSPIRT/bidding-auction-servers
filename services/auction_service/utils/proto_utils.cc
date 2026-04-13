@@ -17,6 +17,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "rapidjson/error/en.h"
 #include "rapidjson/pointer.h"
+#include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
 #include "services/common/util/json_util.h"
 #include "services/common/util/reporting_util.h"
@@ -151,102 +152,111 @@ absl::StatusOr<rapidjson::Document> AddComponentSignals(
   return combined_signals_for_this_bid;
 }
 
-// Create bid metadata json string but doesn't close the json object
-// for adding more fields.
-std::string MakeOpenBidMetadataJson(
+// Creates a rapidjson Document containing common bid metadata fields.
+rapidjson::Document StartMakingBidMetadataJson(
     absl::string_view publisher_hostname,
     absl::string_view interest_group_owner, absl::string_view render_url,
     const google::protobuf::RepeatedPtrField<std::string>&
         ad_component_render_urls,
     absl::string_view bid_currency, const uint32_t seller_data_version,
-    ReportingIdsParamForBidMetadata reporting_ids = {}) {
-  std::string bid_metadata = "{";
+    ReportingIdsParamForBidMetadata reporting_ids = {},
+    std::optional<ForDebuggingOnlyFlags> fdo_flags = std::nullopt) {
+  rapidjson::Document bid_metadata_doc(rapidjson::kObjectType);
+  rapidjson::Document::AllocatorType& allocator =
+      bid_metadata_doc.GetAllocator();
+
   if (!interest_group_owner.empty()) {
-    absl::StrAppend(&bid_metadata, R"JSON(")JSON", kIGOwnerPropertyForScoreAd,
-                    R"JSON(":")JSON", interest_group_owner, R"JSON(",)JSON");
+    bid_metadata_doc.AddMember(
+        rapidjson::StringRef(kIGOwnerPropertyForScoreAd),
+        rapidjson::StringRef(interest_group_owner.data(),
+                             interest_group_owner.size()),
+        allocator);
   }
   if (!publisher_hostname.empty()) {
-    absl::StrAppend(&bid_metadata, R"JSON(")JSON",
-                    kTopWindowHostnamePropertyForScoreAd, R"JSON(":")JSON",
-                    publisher_hostname, R"JSON(",)JSON");
+    bid_metadata_doc.AddMember(
+        rapidjson::StringRef(kTopWindowHostnamePropertyForScoreAd),
+        rapidjson::StringRef(publisher_hostname.data(),
+                             publisher_hostname.size()),
+        allocator);
   }
   if (!ad_component_render_urls.empty()) {
-    absl::StrAppend(&bid_metadata, R"("adComponents":[)");
+    rapidjson::Value components_array(rapidjson::kArrayType);
     for (int i = 0; i < ad_component_render_urls.size(); i++) {
-      absl::StrAppend(&bid_metadata, "\"", ad_component_render_urls.at(i),
-                      "\"");
-      if (i != ad_component_render_urls.size() - 1) {
-        absl::StrAppend(&bid_metadata, ",");
-      }
+      components_array.PushBack(
+          rapidjson::StringRef(ad_component_render_urls.at(i).c_str(),
+                               ad_component_render_urls.at(i).length()),
+          allocator);
     }
-    absl::StrAppend(&bid_metadata, R"(],)");
+    bid_metadata_doc.AddMember(kAdComponentsPropertyForScoreAd,
+                               components_array, allocator);
   }
   if (!bid_currency.empty()) {
-    absl::StrAppend(&bid_metadata, R"JSON(")JSON",
-                    kBidCurrencyPropertyForScoreAd, R"JSON(":")JSON",
-                    bid_currency, R"JSON(",)JSON");
+    bid_metadata_doc.AddMember(
+        rapidjson::StringRef(kBidCurrencyPropertyForScoreAd),
+        rapidjson::StringRef(bid_currency.data(), bid_currency.size()),
+        allocator);
   } else {
-    absl::StrAppend(&bid_metadata, R"JSON(")JSON",
-                    kBidCurrencyPropertyForScoreAd, R"JSON(":")JSON",
-                    kUnknownBidCurrencyCode, R"JSON(",)JSON");
+    bid_metadata_doc.AddMember(
+        rapidjson::StringRef(kBidCurrencyPropertyForScoreAd),
+        rapidjson::StringRef(kUnknownBidCurrencyCode), allocator);
   }
   if (seller_data_version > 0) {
-    absl::StrAppend(&bid_metadata, R"JSON(")JSON",
-                    kSellerDataVersionPropertyForScoreAd, R"JSON(":)JSON",
-                    seller_data_version, R"JSON(,)JSON");
+    bid_metadata_doc.AddMember(
+        rapidjson::StringRef(kSellerDataVersionPropertyForScoreAd),
+        seller_data_version, allocator);
   }
   if (reporting_ids.buyer_reporting_id) {
-    absl::StrAppend(&bid_metadata, R"JSON(")JSON", kBuyerReportingIdForScoreAd,
-                    R"JSON(":")JSON", reporting_ids.buyer_reporting_id.value(),
-                    R"JSON(",)JSON");
+    bid_metadata_doc.AddMember(
+        rapidjson::StringRef(kBuyerReportingIdForScoreAd),
+        rapidjson::StringRef(reporting_ids.buyer_reporting_id->data(),
+                             reporting_ids.buyer_reporting_id->size()),
+        allocator);
   }
   if (reporting_ids.buyer_and_seller_reporting_id) {
-    absl::StrAppend(&bid_metadata, R"JSON(")JSON",
-                    kBuyerAndSellerReportingIdForScoreAd, R"JSON(":")JSON",
-                    reporting_ids.buyer_and_seller_reporting_id.value(),
-                    R"JSON(",)JSON");
+    bid_metadata_doc.AddMember(
+        rapidjson::StringRef(kBuyerAndSellerReportingIdForScoreAd),
+        rapidjson::StringRef(
+            reporting_ids.buyer_and_seller_reporting_id->data(),
+            reporting_ids.buyer_and_seller_reporting_id->size()),
+        allocator);
   }
   if (reporting_ids.selected_buyer_and_seller_reporting_id) {
-    absl::StrAppend(
-        &bid_metadata, R"JSON(")JSON",
-        kSelectedBuyerAndSellerReportingIdForScoreAd, R"JSON(":")JSON",
-        reporting_ids.selected_buyer_and_seller_reporting_id.value(),
-        R"JSON(",)JSON");
+    bid_metadata_doc.AddMember(
+        rapidjson::StringRef(kSelectedBuyerAndSellerReportingIdForScoreAd),
+        rapidjson::StringRef(
+            reporting_ids.selected_buyer_and_seller_reporting_id->data(),
+            reporting_ids.selected_buyer_and_seller_reporting_id->size()),
+        allocator);
   }
-  return bid_metadata;
+  if (fdo_flags) {
+    bid_metadata_doc.AddMember(
+        rapidjson::StringRef(kForDebuggingOnlyInCooldownOrLockout),
+        fdo_flags->in_cooldown_or_lockout(), allocator);
+  }
+  return bid_metadata_doc;
 }
 
-// Gets the debug reporting URL (either win or loss URL) if the URL will not
-// exceed the caps set within here.
+// Gets the debug reporting url (either win or loss url) if its size does not
+// exceed the max allowed size per url.
 inline absl::string_view GetDebugUrlIfInLimit(
     const std::string& url_type, const rapidjson::Value& debug_reporting_urls,
-    int max_allowed_size_debug_url_chars,
-    int max_allowed_size_all_debug_urls_chars,
-    int current_all_debug_urls_chars) {
+    int max_allowed_size_debug_url_chars) {
   auto debug_url_it = debug_reporting_urls.FindMember(url_type.c_str());
   if (debug_url_it == debug_reporting_urls.MemberEnd() ||
       !debug_url_it->value.IsString()) {
     return "";
   }
-
   absl::string_view debug_url = debug_url_it->value.GetString();
   int url_length = debug_url.length();
-  if (url_length <= max_allowed_size_debug_url_chars &&
-      url_length + current_all_debug_urls_chars <=
-          max_allowed_size_all_debug_urls_chars) {
-    PS_VLOG(8) << "Included the " << url_type << ": " << debug_url
-               << " with length: " << url_length
-               << ", previous total length: " << current_all_debug_urls_chars
-               << ", new total length: "
-               << current_all_debug_urls_chars + url_length;
+  if (url_length <= max_allowed_size_debug_url_chars) {
+    PS_VLOG(8) << "Included " << url_type << ": " << debug_url
+               << " with length: " << url_length;
     return debug_url;
-  } else {
-    PS_VLOG(8) << "Skipping " << url_type << " of length: " << url_length
-               << ", since it will cause the new running total to become: "
-               << current_all_debug_urls_chars + url_length
-               << " (which surpasses the limit: "
-               << max_allowed_size_all_debug_urls_chars << ")";
   }
+  // TODO(b/399172783): Add debug_url_failure_count metric to indicate status as
+  // kDebugUrlRejectedForExceedingSize.
+  PS_VLOG(8) << "Skipped " << url_type << ": " << debug_url
+             << " with length: " << url_length;
   return "";
 }
 
@@ -286,20 +296,29 @@ std::string MakeBidMetadata(
         ad_component_render_urls,
     absl::string_view top_level_seller, absl::string_view bid_currency,
     const uint32_t seller_data_version,
-    ReportingIdsParamForBidMetadata reporting_ids) {
-  std::string bid_metadata =
-      MakeOpenBidMetadataJson(publisher_hostname, interest_group_owner,
-                              render_url, ad_component_render_urls,
-                              bid_currency, seller_data_version, reporting_ids);
+    ReportingIdsParamForBidMetadata reporting_ids,
+    std::optional<ForDebuggingOnlyFlags> fdo_flags) {
+  rapidjson::Document bid_metadata_doc = StartMakingBidMetadataJson(
+      publisher_hostname, interest_group_owner, render_url,
+      ad_component_render_urls, bid_currency, seller_data_version,
+      reporting_ids, std::move(fdo_flags));
+  rapidjson::Document::AllocatorType& allocator =
+      bid_metadata_doc.GetAllocator();
+
   // Only add top level seller to bid metadata if it's non empty.
   if (!top_level_seller.empty()) {
-    absl::StrAppend(&bid_metadata, R"JSON(")JSON",
-                    kTopLevelSellerFieldPropertyForScoreAd, R"JSON(":")JSON",
-                    top_level_seller, R"JSON(",)JSON");
+    bid_metadata_doc.AddMember(
+        rapidjson::StringRef(kTopLevelSellerFieldPropertyForScoreAd),
+        rapidjson::StringRef(top_level_seller.data(), top_level_seller.size()),
+        allocator);
   }
-  absl::StrAppend(&bid_metadata, R"JSON(")JSON", kRenderUrlsPropertyForScoreAd,
-                  R"JSON(":")JSON", render_url, R"JSON("})JSON");
-  return bid_metadata;
+  bid_metadata_doc.AddMember(
+      rapidjson::StringRef(kRenderUrlsPropertyForScoreAd),
+      rapidjson::StringRef(render_url.data(), render_url.size()), allocator);
+
+  absl::StatusOr<std::string> result = SerializeJsonDoc(bid_metadata_doc);
+  // SerializeJsonDoc should not fail for a document constructed this way.
+  return result.ok() ? *result : "{}";
 }
 
 std::string MakeBidMetadataForTopLevelAuction(
@@ -309,15 +328,22 @@ std::string MakeBidMetadataForTopLevelAuction(
         ad_component_render_urls,
     absl::string_view component_seller, absl::string_view bid_currency,
     const uint32_t seller_data_version) {
-  std::string bid_metadata = MakeOpenBidMetadataJson(
+  rapidjson::Document bid_metadata_doc = StartMakingBidMetadataJson(
       publisher_hostname, interest_group_owner, render_url,
       ad_component_render_urls, bid_currency, seller_data_version);
-  absl::StrAppend(&bid_metadata, R"JSON(")JSON",
-                  kComponentSellerFieldPropertyForScoreAd, R"JSON(":")JSON",
-                  component_seller, R"JSON(",)JSON");
-  absl::StrAppend(&bid_metadata, R"JSON(")JSON", kRenderUrlsPropertyForScoreAd,
-                  R"JSON(":")JSON", render_url, R"JSON("})JSON");
-  return bid_metadata;
+  rapidjson::Document::AllocatorType& allocator =
+      bid_metadata_doc.GetAllocator();
+
+  bid_metadata_doc.AddMember(
+      rapidjson::StringRef(kComponentSellerFieldPropertyForScoreAd),
+      rapidjson::StringRef(component_seller.data(), component_seller.size()),
+      allocator);
+  bid_metadata_doc.AddMember(
+      rapidjson::StringRef(kRenderUrlsPropertyForScoreAd),
+      rapidjson::StringRef(render_url.data(), render_url.size()), allocator);
+
+  absl::StatusOr<std::string> result = SerializeJsonDoc(bid_metadata_doc);
+  return result.ok() ? *result : "{}";
 }
 
 absl::StatusOr<absl::flat_hash_map<std::string, rapidjson::StringBuffer>>
@@ -502,9 +528,7 @@ ParseAdRejectionReason(const rapidjson::Document& score_ad_resp,
 
 absl::StatusOr<ScoreAdsResponse::AdScore> ScoreAdResponseJsonToProto(
     const rapidjson::Document& score_ad_resp,
-    int max_allowed_size_debug_url_chars,
-    int64_t max_allowed_size_all_debug_urls_chars,
-    bool device_component_auction, int64_t& current_all_debug_urls_chars) {
+    int max_allowed_size_debug_url_chars, bool device_component_auction) {
   ScoreAdsResponse::AdScore score_ads_response;
   // Default value.
   score_ads_response.set_allow_component_auction(false);
@@ -589,27 +613,21 @@ absl::StatusOr<ScoreAdsResponse::AdScore> ScoreAdResponseJsonToProto(
     return score_ads_response;
   }
 
+  // Populate debug urls in response after checking them against the max allowed
+  // size per url. The check for max allowed total size of all urls will be
+  // performed in the reactor callback, only for cases where debug urls are sent
+  // back to SFE (component auction winner / sampling).
   DebugReportUrls debug_report_urls;
   const auto& debug_reporting_urls = debug_report_urls_itr->value;
-
-  absl::string_view win_debug_url = GetDebugUrlIfInLimit(
+  debug_report_urls.set_auction_debug_win_url(GetDebugUrlIfInLimit(
       kAuctionDebugWinUrlPropertyForScoreAd, debug_reporting_urls,
-      max_allowed_size_debug_url_chars, max_allowed_size_all_debug_urls_chars,
-      current_all_debug_urls_chars);
-  if (!win_debug_url.empty()) {
-    debug_report_urls.set_auction_debug_win_url(win_debug_url);
-    current_all_debug_urls_chars += win_debug_url.size();
-  }
-  absl::string_view loss_debug_url = GetDebugUrlIfInLimit(
+      max_allowed_size_debug_url_chars));
+  debug_report_urls.set_auction_debug_loss_url(GetDebugUrlIfInLimit(
       kAuctionDebugLossUrlPropertyForScoreAd, debug_reporting_urls,
-      max_allowed_size_debug_url_chars, max_allowed_size_all_debug_urls_chars,
-      current_all_debug_urls_chars);
-  if (!loss_debug_url.empty()) {
-    debug_report_urls.set_auction_debug_loss_url(loss_debug_url);
-    current_all_debug_urls_chars += loss_debug_url.size();
-  }
+      max_allowed_size_debug_url_chars));
   *score_ads_response.mutable_debug_report_urls() =
       std::move(debug_report_urls);
+
   return score_ads_response;
 }
 
@@ -697,6 +715,23 @@ std::unique_ptr<AdWithBidMetadata> MapKAnonGhostWinnerToAdWithBidMetadata(
   ad->set_interest_group_owner(owner);
   ad->set_allocated_bid_currency(ghost_winner.release_bid_currency());
   ad->set_k_anon_status(false);
+  return ad;
+}
+
+std::unique_ptr<
+    ScoreAdsRequest::ScoreAdsRawRequest::ProtectedAppSignalsAdWithBidMetadata>
+MapKAnonGhostWinnerToProtectedAppSignalsAdWithBidMetadata(
+    absl::string_view owner,
+    AuctionResult::KAnonGhostWinner::GhostWinnerForTopLevelAuction&
+        ghost_winner) {
+  auto ad = std::make_unique<ProtectedAppSignalsAdWithBidMetadata>();
+  ad->set_bid(ghost_winner.modified_bid());
+  ad->set_allocated_render(ghost_winner.release_ad_render_url());
+  ad->set_owner(owner);
+  ad->set_allocated_bid_currency(ghost_winner.release_bid_currency());
+  ad->set_k_anon_status(false);
+  // Do not set egress payload since that will be included
+  // in the component reporting signals.
   return ad;
 }
 

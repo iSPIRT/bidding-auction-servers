@@ -14,69 +14,151 @@
 
 #include "services/bidding_service/utils/validation.h"
 
-namespace privacy_sandbox::bidding_auction_servers {
+#include "services/common/attestation/attestation_util.h"
 
-DebugUrlsSize TrimAndReturnDebugUrlsSize(
-    AdWithBid& ad_with_bid, int max_allowed_size_debug_url_chars,
-    long max_allowed_size_all_debug_urls_chars, long total_debug_urls_chars,
-    RequestLogContext& log_context) {
-  // No debug URLs present.
-  if (!ad_with_bid.has_debug_report_urls()) {
-    return {.win_url_chars = 0, .loss_url_chars = 0};
+namespace privacy_sandbox::bidding_auction_servers {
+namespace {
+
+// Logs and updates metric for a rejected debug url.
+void LogRejectedDebugUrl(absl::string_view url, absl::string_view reject_reason,
+                         absl::string_view interest_group_name,
+                         RequestLogContext& log_context,
+                         metric::BiddingContext* metric_context) {
+  if (url.empty()) {
+    return;
   }
-  // Size of existing debug URLs for this bid.
-  long win_url_chars =
-      ad_with_bid.debug_report_urls().auction_debug_win_url().length();
-  long loss_url_chars =
-      ad_with_bid.debug_report_urls().auction_debug_loss_url().length();
-  // Clear debug URLs for this bid since current size of all debug URLs already
-  // exceeds maximum allowed size of all debug URLs.
-  if (total_debug_urls_chars >= max_allowed_size_all_debug_urls_chars) {
-    if (win_url_chars > 0) {
-      PS_VLOG(kNoisyWarn, log_context)
-          << "Skipped debug win URL for " << ad_with_bid.interest_group_name()
-          << ": " << ad_with_bid.debug_report_urls().auction_debug_win_url();
-    }
-    if (loss_url_chars > 0) {
-      PS_VLOG(kNoisyWarn, log_context)
-          << "Skipped debug loss URL for " << ad_with_bid.interest_group_name()
-          << ": " << ad_with_bid.debug_report_urls().auction_debug_loss_url();
-    }
-    ad_with_bid.clear_debug_report_urls();
-    return {.win_url_chars = 0, .loss_url_chars = 0};
+  PS_VLOG(8, log_context) << "Skipped debug url for " << interest_group_name
+                          << ": " << url;
+  if (metric_context) {
+    LogIfError(metric_context->AccumulateMetric<metric::kBiddingDebugUrlCount>(
+        1, reject_reason));
   }
-  // Clear win debug URL if:
-  // i) it exceeds maximum allowed size per debug URL, or
-  // ii) it causes total size of all debug URLs to exceed maximum allowed size
-  // of all debug URLs.
-  if (win_url_chars > max_allowed_size_debug_url_chars ||
-      win_url_chars + total_debug_urls_chars >
-          max_allowed_size_all_debug_urls_chars) {
-    PS_VLOG(kNoisyWarn, log_context)
-        << "Skipped debug win URL for " << ad_with_bid.interest_group_name()
-        << ": " << ad_with_bid.debug_report_urls().auction_debug_win_url();
-    ad_with_bid.mutable_debug_report_urls()->clear_auction_debug_win_url();
+}
+
+// Performs checks for max size, max total size, and sampling for a given debug
+// url. Updates current_url_chars and/or current_total_debug_urls_chars.
+// Returns the rejection reason if the url does not pass validation checks.
+std::optional<absl::string_view> GetRejectReasonIfBuyerDebugUrlInvalid(
+    long& current_url_chars, long& current_total_debug_urls_chars,
+    const DebugUrlsValidationConfig& config) {
+  if (current_url_chars == 0) {
+    return std::nullopt;
+  }
+  if (current_url_chars > config.max_allowed_size_debug_url_chars) {
+    current_url_chars = 0;
+    return kDebugUrlRejectedForExceedingSize;
+  }
+  if (current_url_chars + current_total_debug_urls_chars >
+      config.max_allowed_size_all_debug_urls_chars) {
+    current_url_chars = 0;
+    return kDebugUrlRejectedForExceedingTotalSize;
+  }
+  if (config.enable_sampled_debug_reporting &&
+      !DebugUrlPassesSampling(config.debug_reporting_sampling_upper_bound)) {
+    current_url_chars = 0;
+    return kDebugUrlRejectedDuringSampling;
+  }
+  current_total_debug_urls_chars += current_url_chars;
+  return std::nullopt;
+}
+
+// Attest fDO destinations against API enrollment list.
+void AttestDebugUrls(absl::string_view ig_name, DebugReportUrls* debug_urls,
+                     AdtechEnrollmentCacheInterface* cache,
+                     RequestLogContext& log_context,
+                     metric::BiddingContext* metric_context,
+                     long& win_url_chars, long& loss_url_chars) {
+  if (cache == nullptr) {
+    return;
+  }
+  if (auto adtech_site =
+          GetValidAdTechSite(debug_urls->auction_debug_win_url());
+      (!adtech_site.ok() || !cache->Query(*adtech_site))) {
+    LogRejectedDebugUrl(debug_urls->auction_debug_win_url(),
+                        kDebugUrlRejectedDuringEnrollmentCheck, ig_name,
+                        log_context, metric_context);
+    debug_urls->clear_auction_debug_win_url();
     win_url_chars = 0;
-  } else {
-    total_debug_urls_chars += win_url_chars;
   }
-  // Clear loss debug URL if:
-  // i) it exceeds maximum allowed size per debug URL, or
-  // ii) it causes total size of all debug URLs to exceed maximum allowed size
-  // of all debug URLs.
-  if (loss_url_chars > max_allowed_size_debug_url_chars ||
-      loss_url_chars + total_debug_urls_chars >
-          max_allowed_size_all_debug_urls_chars) {
-    PS_VLOG(kNoisyWarn, log_context)
-        << "Skipped debug loss URL for " << ad_with_bid.interest_group_name()
-        << ": " << ad_with_bid.debug_report_urls().auction_debug_loss_url();
-    ad_with_bid.mutable_debug_report_urls()->clear_auction_debug_loss_url();
+  if (auto adtech_site =
+          GetValidAdTechSite(debug_urls->auction_debug_loss_url());
+      (!adtech_site.ok() || !cache->Query(*adtech_site))) {
+    LogRejectedDebugUrl(debug_urls->auction_debug_loss_url(),
+                        kDebugUrlRejectedDuringEnrollmentCheck, ig_name,
+                        log_context, metric_context);
+    debug_urls->clear_auction_debug_loss_url();
     loss_url_chars = 0;
   }
+}
+
+}  // namespace
+
+int ValidateBuyerDebugUrls(AdWithBid& ad_with_bid,
+                           long& current_total_debug_urls_chars,
+                           const DebugUrlsValidationConfig& config,
+                           RequestLogContext& log_context,
+                           metric::BiddingContext* metric_context) {
+  // No debug URLs present.
+  if (!ad_with_bid.has_debug_report_urls()) {
+    return 0;
+  }
+
+  // Size of existing debug urls for this bid.
+  absl::string_view ig_name = ad_with_bid.interest_group_name();
+  auto* debug_urls = ad_with_bid.mutable_debug_report_urls();
+  long win_url_chars = debug_urls->auction_debug_win_url().length();
+  long loss_url_chars = debug_urls->auction_debug_loss_url().length();
+
+  // Early exit: Total size limit already reached before this bid.
+  if (current_total_debug_urls_chars >=
+      config.max_allowed_size_all_debug_urls_chars) {
+    LogRejectedDebugUrl(debug_urls->auction_debug_win_url(),
+                        kDebugUrlRejectedForExceedingTotalSize, ig_name,
+                        log_context, metric_context);
+    LogRejectedDebugUrl(debug_urls->auction_debug_loss_url(),
+                        kDebugUrlRejectedForExceedingTotalSize, ig_name,
+                        log_context, metric_context);
+    ad_with_bid.clear_debug_report_urls();
+    return 0;
+  }
+
+  AttestDebugUrls(ig_name, debug_urls, config.attestation_cache, log_context,
+                  metric_context, win_url_chars, loss_url_chars);
+  if (win_url_chars == 0 && loss_url_chars == 0) {
+    ad_with_bid.clear_debug_report_urls();
+    return 0;
+  }
+
+  // Validate debug win url.
+  std::optional<absl::string_view> reject_reason;
+  if (reject_reason = GetRejectReasonIfBuyerDebugUrlInvalid(
+          win_url_chars, current_total_debug_urls_chars, config);
+      reject_reason.has_value()) {
+    LogRejectedDebugUrl(debug_urls->auction_debug_win_url(), *reject_reason,
+                        ig_name, log_context, metric_context);
+    debug_urls->clear_auction_debug_win_url();
+    ad_with_bid.set_debug_win_url_failed_sampling(
+        *reject_reason == kDebugUrlRejectedDuringSampling);
+  }
+
+  // Validate debug loss url.
+  if (reject_reason = GetRejectReasonIfBuyerDebugUrlInvalid(
+          loss_url_chars, current_total_debug_urls_chars, config);
+      reject_reason.has_value()) {
+    LogRejectedDebugUrl(debug_urls->auction_debug_loss_url(), *reject_reason,
+                        ig_name, log_context, metric_context);
+    debug_urls->clear_auction_debug_loss_url();
+    ad_with_bid.set_debug_loss_url_failed_sampling(
+        *reject_reason == kDebugUrlRejectedDuringSampling);
+  }
+
+  // Cleanup: If both urls were cleared, remove the container.
   if (win_url_chars == 0 && loss_url_chars == 0) {
     ad_with_bid.clear_debug_report_urls();
   }
-  return {.win_url_chars = win_url_chars, .loss_url_chars = loss_url_chars};
+
+  // Return count of non-empty validated debug urls.
+  return (win_url_chars > 0) + (loss_url_chars > 0);
 }
 
 absl::Status IsValidProtectedAudienceBid(const AdWithBid& bid,
@@ -106,7 +188,6 @@ absl::Status IsValidProtectedAppSignalsBid(
         absl::StrCat("Zero bid will be ignored for ",
                      GetProtectedAppSignalsBidDebugInfo(bid)));
   }
-
   // Is a component auction but bid does not allow component auctions
   if (auction_scope ==
           AuctionScope::AUCTION_SCOPE_SERVER_COMPONENT_MULTI_SELLER &&

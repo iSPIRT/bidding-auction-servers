@@ -132,7 +132,7 @@ function builder::docker_img_to_nitro() {
   local -r docker_image_tag="$3"
   local -r output_path="$4"
   local -r eif_name="$5"
-  local -r image="${6-build-amazonlinux2023}"
+  local -r image="${6-nitro-cli-linux6}"
   local -r temp_tag="$(mktemp --dry-run temp-XXXXXX)"
   docker load -i "${docker_image_tar}"
   # add a temp tag to reduce the chance of conflicts or race conditions
@@ -177,14 +177,13 @@ function builder::cbuild_al() {
   shift
   local -r cbuild="$(builder::get_tools_dir)"/cbuild
   declare -a env_vars
+  IFS=':' read -r -a env_vars <<< "${BUILDER_CUSTOM_ENV_VARS}"
   builder::add_aws_env_vars env_vars
   declare env_args
   for evar in "${env_vars[@]}"; do
     env_args+=(--env "${evar}")
   done
   printf "=== cbuild %s action envs ===\n" "${image}"
-  # shellcheck disable=SC2086
-  "${cbuild}" ${CBUILD_ARGS} "${env_args[@]}" --image "${image}" --cmd "grep -o 'action_env.*' /etc/bazel.bazelrc 1>/dev/stderr 2>/dev/null"
   # shellcheck disable=SC2086
   "${cbuild}" ${CBUILD_ARGS} "${env_args[@]}" --image "${image}" --cmd "$*"
 }

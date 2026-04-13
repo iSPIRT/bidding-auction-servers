@@ -58,6 +58,22 @@ inline constexpr absl::string_view kServerName[]{
 
 constexpr int kMaxBuyersSolicited = 2;
 
+// Roma raw metric names.
+inline constexpr char kRawRomaExecutionDuration[] =
+    "roma.execution.duration_ms";
+inline constexpr char kRawRomaExecutionQueueFullnessRatio[] =
+    "roma.execution.queue_fullness_ratio";
+inline constexpr char kRawRomaExecutionActiveWorkerRatio[] =
+    "roma.execution.active_worker_ratio";
+inline constexpr char kRawRomaExecutionWaitTime[] =
+    "roma.execution.wait_time_ms";
+inline constexpr char kRawRomaExecutionCodeRunDuration[] =
+    "roma.execution.code_run_duration_ms";
+inline constexpr char kRawRomaExecutionJsonInputParsingDuration[] =
+    "roma.execution.json_input_parsing_duration_ms";
+inline constexpr char kRawRomaExecutionJsEngineHandlerCallDuration[] =
+    "roma.execution.js_engine_handler_call_duration_ms";
+
 // Metrics with dynamic partitions cannot have empty static partitions.
 inline constexpr std::array<std::string_view, 1> kDefaultDynamicPartition = {
     "default"};
@@ -85,6 +101,86 @@ inline constexpr server_common::metrics::Definition<
                           "End to end time taken from dispatching the UDF to "
                           "the execution of the callback (includes queue time)",
                           server_common::metrics::kTimeHistogram, 300, 10);
+
+// TODO(b/401568551): Revisit upper bound of the metric after gathering more
+// data.
+inline constexpr server_common::metrics::Definition<
+    int, server_common::metrics::Privacy::kImpacting,
+    server_common::metrics::Instrument::kHistogram>
+    kUdfExecutionQueueingDuration(
+        "udf_execution.queueing.duration_ms",
+        "Maximum queueing time (in milliseconds) for requests within the batch "
+        "before being processed.",
+        server_common::metrics::kTimeHistogram, 300, 0);
+
+inline constexpr server_common::metrics::Definition<
+    int, server_common::metrics::Privacy::kImpacting,
+    server_common::metrics::Instrument::kHistogram>
+    kUdfExecutionDispatcherInitializationDuration(
+        "udf_execution.dispatcher_initialization.duration_ms",
+        "Time taken to dispatch the UDF only (not including callback "
+        "execution)",
+        server_common::metrics::kTimeHistogram, 300, 0);
+
+inline constexpr server_common::metrics::Definition<
+    int, server_common::metrics::Privacy::kImpacting,
+    server_common::metrics::Instrument::kHistogram>
+    kRomaExecutionDuration("roma.execution.duration_ms",
+                           "Maximum roma v8 execution time (in milliseconds) "
+                           "for interest groups within the batch.",
+                           server_common::metrics::kTimeHistogram, 300, 0);
+
+inline constexpr server_common::metrics::Definition<
+    double, server_common::metrics::Privacy::kImpacting,
+    server_common::metrics::Instrument::kHistogram>
+    kRomaExecutionQueueFullnessRatio(
+        "roma.execution.queue_fullness_ratio",
+        "Ratio of pending requests in the dispatcher queue.", kPercentHistogram,
+        1, 0);
+
+inline constexpr server_common::metrics::Definition<
+    double, server_common::metrics::Privacy::kImpacting,
+    server_common::metrics::Instrument::kHistogram>
+    kRomaExecutionActiveWorkerRatio(
+        "roma.execution.active_worker_ratio",
+        "Ratio of roma workers actively processing requests.",
+        kPercentHistogram, 1, 0);
+
+inline constexpr server_common::metrics::Definition<
+    int, server_common::metrics::Privacy::kImpacting,
+    server_common::metrics::Instrument::kHistogram>
+    kRomaExecutionCodeRunDuration(
+        "roma.execution.code_run.duration_ms",
+        "Maximum time (in milliseconds) taken to run code inside of the JS "
+        "engine for interest groups within batch.",
+        server_common::metrics::kTimeHistogram, 300, 0);
+
+inline constexpr server_common::metrics::Definition<
+    int, server_common::metrics::Privacy::kImpacting,
+    server_common::metrics::Instrument::kHistogram>
+    kRomaExecutionJsonInputParsingDuration(
+        "roma.execution.json_input_parsing.duration_ms",
+        "Maximum time (in milliseconds) taken to parse the input in JS engine "
+        "for interest groups within batch.",
+        server_common::metrics::kTimeHistogram, 300, 0);
+
+inline constexpr server_common::metrics::Definition<
+    int, server_common::metrics::Privacy::kImpacting,
+    server_common::metrics::Instrument::kHistogram>
+    kRomaExecutionJsEngineHandlerCallDuration(
+        "roma.execution.js_engine_handler_call.duration_ms",
+        "Maximum time (in milliseconds) taken to taken to call handler "
+        "function in JS engine for interest groups within batch.",
+        server_common::metrics::kTimeHistogram, 300, 0);
+
+inline constexpr server_common::metrics::Definition<
+    int, server_common::metrics::Privacy::kImpacting,
+    server_common::metrics::Instrument::kHistogram>
+    kUdfBatchExecutionDuration(
+        "udf_execution.batch_duration_ms",
+        "End to end time taken from dispatching the batch of UDFs to "
+        "the execution of the callback (includes queue time)",
+        server_common::metrics::kTimeHistogram, 300, 10);
 
 inline constexpr server_common::metrics::Definition<
     int, server_common::metrics::Privacy::kImpacting,
@@ -284,7 +380,7 @@ inline constexpr server_common::metrics::Definition<
     kBiddingInferenceRequestDuration(
         "bidding.inference.request.duration_ms",
         "Time taken by Roma callback to execute inference",
-        server_common::metrics::kTimeHistogram, 200, 0);
+        server_common::metrics::kTimeHistogram, 300, 0);
 
 inline constexpr server_common::metrics::Definition<
     double, server_common::metrics::Privacy::kNonImpacting,
@@ -360,6 +456,24 @@ inline constexpr server_common::metrics::Definition<
                     "Blob fetch and load status: 0 means success, positive "
                     "numbers map to absl error status codes.");
 
+inline constexpr server_common::metrics::Definition<
+    int, server_common::metrics::Privacy::kImpacting,
+    server_common::metrics::Instrument::kHistogram>
+    kReportResultExecutionDuration(
+        "report_result_execution.duration_ms",
+        "End to end time taken from dispatching the report result request to "
+        "the execution of the callback (includes queue time)",
+        server_common::metrics::kTimeHistogram, 300, 0);
+
+inline constexpr server_common::metrics::Definition<
+    int, server_common::metrics::Privacy::kImpacting,
+    server_common::metrics::Instrument::kHistogram>
+    kReportWinExecutionDuration(
+        "report_win_execution.duration_ms",
+        "End to end time taken from dispatching the report win request to "
+        "the execution of the callback (includes queue time)",
+        server_common::metrics::kTimeHistogram, 300, 0);
+
 inline constexpr absl::string_view kSellerComponentAuctionNotAllowed =
     "seller-component-auction-not-allowed";
 
@@ -430,14 +544,25 @@ inline constexpr server_common::metrics::Definition<
         /*upper_bound*/ 100,
         /*lower_bound*/ 1);
 
+inline constexpr absl::string_view kBuyerDebugUrlStatus[] = {
+    kDebugUrlRejectedDuringSampling,
+    kDebugUrlRejectedForExceedingSize,
+    kDebugUrlRejectedForExceedingTotalSize,
+    kDebugUrlRejectedDuringEnrollmentCheck,
+    kBuyerDebugUrlSentToSeller,
+};
+
 inline constexpr server_common::metrics::Definition<
     int, server_common::metrics::Privacy::kImpacting,
-    server_common::metrics::Instrument::kUpDownCounter>
+    server_common::metrics::Instrument::kPartitionedCounter>
     kBiddingDebugUrlCount(
         /*name*/ "bidding.business_logic.debug_url_count",
         /*description*/
-        "Total number of win and loss debug URLs sent to the seller",
-        /*upper_bound*/ 200,
+        "Total number of debug URLs received in the bidding service by status",
+        /*partition_type*/ "buyer_debug_url_status",
+        /*max_partitions_contributed*/ 3,
+        /*public_partitions*/ kBuyerDebugUrlStatus,
+        /*upper_bound*/ 100,
         /*lower_bound*/ 0);
 
 inline constexpr server_common::metrics::Definition<
@@ -446,7 +571,7 @@ inline constexpr server_common::metrics::Definition<
     kBiddingDebugUrlsSizeBytes(
         /*name*/ "bidding.business_logic.debug_urls_size_bytes",
         /*description*/
-        "Total size of win and loss debug URLs sent to the seller in Bytes",
+        "Total size of debug URLs sent to the seller in Bytes",
         server_common::metrics::kSizeHistogram,
         /*upper_bound*/ 3'000'000,
         /*lower_bound*/ 1'000);
@@ -522,9 +647,9 @@ inline constexpr server_common::metrics::Definition<
         /*description*/
         "Number of errors in the bidding server by error code",
         /*partition_type*/ "error_code",
-        /*max_partitions_contributed*/ 1,
+        /*max_partitions_contributed*/ 4,
         /*public_partitions*/ kBiddingErrorCode,
-        /*upper_bound*/ 1,
+        /*upper_bound*/ 6,
         /*lower_bound*/ 0,
         /*min_noise_to_output*/ 0.99);
 
@@ -552,7 +677,7 @@ inline constexpr server_common::metrics::Definition<
         /*partition_type*/ "error_code",
         /*max_partitions_contributed*/ 1,
         /*public_partitions*/ inference::kInferenceErrorCode,
-        /*upper_bound*/ 1,
+        /*upper_bound*/ 15,
         /*lower_bound*/ 0,
         /*min_noise_to_output*/ 0.99);
 
@@ -729,7 +854,7 @@ inline constexpr server_common::metrics::Definition<
         /*name*/ "inference.request.count",
         /*description*/
         "Total number of inference requests received by the inference sidecar",
-        1, 0);
+        15, 0);
 inline constexpr server_common::metrics::Definition<
     double, server_common::metrics::Privacy::kImpacting,
     server_common::metrics::Instrument::kHistogram>
@@ -743,7 +868,7 @@ inline constexpr server_common::metrics::Definition<
     kInferenceRequestDuration(
         "inference.request.duration_ms",
         "Time taken by inference sidecar to execute inference",
-        server_common::metrics::kTimeHistogram, 200, 0);
+        server_common::metrics::kTimeHistogram, 300, 0);
 
 inline constexpr server_common::metrics::Definition<
     int, server_common::metrics::Privacy::kImpacting,
@@ -763,7 +888,7 @@ inline constexpr server_common::metrics::Definition<
         /*partition_type*/ "status_code",
         /*max_partitions_contributed*/ 1,
         /*public_partitions*/ server_common::metrics::kEmptyPublicPartition,
-        /*upper_bound*/ 1,
+        /*upper_bound*/ 15,
         /*lower_bound*/ 0);
 
 inline constexpr server_common::metrics::Definition<
@@ -784,7 +909,7 @@ inline constexpr server_common::metrics::Definition<
         /*partition_type*/ "model",
         /*max_partitions_contributed*/ 1,
         /*public_partitions*/ kDefaultDynamicPartition,
-        /*upper_bound*/ 1,
+        /*upper_bound*/ 15,
         /*lower_bound*/ 0);
 
 inline constexpr server_common::metrics::Definition<
@@ -797,7 +922,7 @@ inline constexpr server_common::metrics::Definition<
         /*partition_type*/ "model",
         /*max_partitions_contributed*/ 1,
         /*public_partitions*/ kDefaultDynamicPartition,
-        /*upper_bound*/ 200,
+        /*upper_bound*/ 300,
         /*lower_bound*/ 0);
 
 inline constexpr server_common::metrics::Definition<
@@ -811,7 +936,7 @@ inline constexpr server_common::metrics::Definition<
         /*partition_type*/ "model",
         /*max_partitions_contributed*/ 1,
         /*public_partitions*/ kDefaultDynamicPartition,
-        /*upper_bound*/ 1,
+        /*upper_bound*/ 15,
         /*lower_bound*/ 0);
 
 inline constexpr server_common::metrics::Definition<
@@ -861,6 +986,19 @@ inline constexpr server_common::metrics::Definition<
         /*upper_bound*/ 1,
         /*lower_bound*/ 0);
 
+// TODO(b/402787605): Remove request age metric by 2025/07/01.
+inline constexpr double kRequestAgeSecondsHistogram[] = {
+    1, 3, 5, 10, 30, 45, 60, 120, 180, 240, 300, 600, 900, 1800, 3600};
+inline constexpr server_common::metrics::Definition<
+    int, server_common::metrics::Privacy::kNonImpacting,
+    server_common::metrics::Instrument::kHistogram>
+    kRequestAgeSeconds(
+        /* name */ "sfe.protected_ciphertext.request_age_seconds",
+        /* description */
+        "The absolute value of the difference between the ciphertext creation "
+        "timestamp and current server time in seconds",
+        /*partition_type*/ kRequestAgeSecondsHistogram);
+
 template <typename RequestT>
 struct RequestMetric;
 
@@ -896,7 +1034,16 @@ inline constexpr const server_common::metrics::DefinitionName*
         &kBiddingDebugUrlCount,
         &kBiddingDebugUrlsSizeBytes,
         &kUdfExecutionDuration,
+        &kUdfExecutionQueueingDuration,
+        &kUdfBatchExecutionDuration,
         &kUdfExecutionErrorCount,
+        &kUdfExecutionDispatcherInitializationDuration,
+        &kRomaExecutionDuration,
+        &kRomaExecutionQueueFullnessRatio,
+        &kRomaExecutionActiveWorkerRatio,
+        &kRomaExecutionCodeRunDuration,
+        &kRomaExecutionJsonInputParsingDuration,
+        &kRomaExecutionJsEngineHandlerCallDuration,
         &kBiddingErrorCountByErrorCode,
         &kBiddingBidRejectedCount,
         &kBiddingInferenceRequestDuration,
@@ -1010,6 +1157,7 @@ inline constexpr const server_common::metrics::DefinitionName*
         &kKAnonCacheHitPercentage,
         &kNonKAnonCacheHitPercentage,
         &kKAnonOverallQueryDuration,
+        &kRequestAgeSeconds,
 };
 
 template <>
@@ -1039,8 +1187,17 @@ inline constexpr const server_common::metrics::DefinitionName*
         &kAuctionBidRejectedCount,
         &kAuctionBidRejectedPercent,
         &kUdfExecutionDuration,
+        &kUdfExecutionQueueingDuration,
+        &kRomaExecutionDuration,
+        &kRomaExecutionQueueFullnessRatio,
+        &kRomaExecutionActiveWorkerRatio,
+        &kRomaExecutionCodeRunDuration,
+        &kRomaExecutionJsonInputParsingDuration,
+        &kRomaExecutionJsEngineHandlerCallDuration,
         &kUdfExecutionErrorCount,
         &kAuctionErrorCountByErrorCode,
+        &kReportResultExecutionDuration,
+        &kReportWinExecutionDuration,
 };
 
 template <>
