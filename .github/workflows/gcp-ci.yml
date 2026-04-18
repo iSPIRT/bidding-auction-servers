@@ -27,6 +27,8 @@ on:
         description: "Buyer test_mode runtime flag (string true/false in tfvars). Reserved for future non-test deploys."
         type: boolean
         default: true
+  pull_request:
+    branches: [main]
 
 jobs:
   deploy:
@@ -34,10 +36,11 @@ jobs:
     uses: ./.github/workflows/gcp-deploy.yml
     secrets: inherit
     with:
-      apply_project_setup: ${{ inputs.apply_project_setup }}
-      image_repo: ${{ inputs.image_repo }}
-      image_tag: ${{ inputs.image_tag }}
-      test_mode: ${{ inputs.test_mode }}
+      # github.event.inputs is only set for workflow_dispatch; PR runs use the same defaults as the dispatch inputs above.
+      apply_project_setup: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.apply_project_setup == 'true' }}
+      image_repo: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.image_repo || 'ispirt.azurecr.io/depainferencing/gcp' }}
+      image_tag: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.image_tag || 'nonprod-4.10.0' }}
+      test_mode: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.test_mode == 'true' }}
 
   test:
     name: Test (GCP)
@@ -48,10 +51,10 @@ jobs:
   cleanup:
     name: Cleanup (GCP)
     needs: [deploy, test]
-    if: always() && inputs.run_cleanup && needs.deploy.result == 'success'
+    if: always() && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_cleanup == 'true') && needs.deploy.result == 'success'
     uses: ./.github/workflows/gcp-cleanup.yml
     secrets: inherit
     with:
-      image_repo: ${{ inputs.image_repo }}
-      image_tag: ${{ inputs.image_tag }}
-      test_mode: ${{ inputs.test_mode }}
+      image_repo: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.image_repo || 'ispirt.azurecr.io/depainferencing/gcp' }}
+      image_tag: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.image_tag || 'nonprod-4.10.0' }}
+      test_mode: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.test_mode == 'true' }}
