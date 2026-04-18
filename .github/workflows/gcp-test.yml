@@ -20,7 +20,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Secure invoke (smoke test)
+      - name: Secure invoke test
         run: |
           set -euo pipefail
           test -n "${GCP_DOMAIN}" || { echo "::error::Set variable GCP_DOMAIN"; exit 1; }

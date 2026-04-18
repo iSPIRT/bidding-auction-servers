@@ -23,7 +23,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-22.04
-    # Terraform + up to ~25 min backend polling + gcloud verification
     timeout-minutes: 150
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -155,6 +154,8 @@ jobs:
           MAX_SEC=1500
           INTERVAL=45
           ELAPSED=0
+          echo "5 minute waiting period"
+          sleep 300
           echo "Polling backend health every ${INTERVAL}s (max ${MAX_SEC}s)..."
           while [ "${ELAPSED}" -lt "${MAX_SEC}" ]; do
             OK=true
