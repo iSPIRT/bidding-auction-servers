@@ -2,7 +2,6 @@ name: GCP Offer Services — test
 
 permissions:
   contents: read
-  id-token: write
 
 on:
   workflow_call:
@@ -10,54 +9,48 @@ on:
 jobs:
   test:
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    # Bazel + first cbuild image pull can be slow.
+    timeout-minutes: 120
     env:
-      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_DOMAIN: ${{ vars.GCP_DOMAIN }}
+      GCP_BFE_HOST: ${{ vars.GCP_BFE_HOST }}
       OPERATOR: ispirt
       ENV: ci
-      REGION: us-central1
     steps:
-      - name: Authenticate to Google Cloud (Workload Identity Federation)
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Global load balancer backend health
+      - name: Secure invoke (smoke test)
         run: |
           set -euo pipefail
-          test -n "${GCP_PROJECT_ID}" || (echo "Set variable GCP_PROJECT_ID" && exit 1)
-          echo "## Backend service health" >> "$GITHUB_STEP_SUMMARY"
-          for SVC in xlb mesh; do
-            NAME="${OPERATOR}-${ENV}-${SVC}-backend-service"
-            echo "### ${NAME}" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            gcloud compute backend-services get-health "${NAME}" \
-              --project="${GCP_PROJECT_ID}" --global 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          test -n "${GCP_DOMAIN}" || (echo "Set repository variable GCP_DOMAIN (apex, e.g. example.com)" && exit 1)
+          test -f "${GITHUB_WORKSPACE}/get_bids_request.json" || (echo "Missing get_bids_request.json at repo root" && exit 1)
+          chmod +x ./builders/tools/cbuild
+
+          if [ -n "${GCP_BFE_HOST:-}" ]; then
+            HOST_ADDR="${GCP_BFE_HOST}"
+          else
+            HOST_ADDR="${OPERATOR}-${ENV}.bfe.${GCP_DOMAIN}:443"
+          fi
+          echo "BFE host_addr=${HOST_ADDR}"
+          echo "## secure_invoke smoke test" >> "$GITHUB_STEP_SUMMARY"
+          echo "host_addr=\`${HOST_ADDR}\`" >> "$GITHUB_STEP_SUMMARY"
+
+          ATTEMPTS=4
+          SLEEP_BETWEEN=120
+          for A in $(seq 1 "${ATTEMPTS}"); do
+            echo "secure_invoke attempt ${A}/${ATTEMPTS}..."
+            if ./builders/tools/cbuild \
+              --image build-debian \
+              --cmd "bazel run //tools/secure_invoke:invoke -- --target_service=BFE --input_file=/src/workspace/get_bids_request.json --host_addr=${HOST_ADDR} --client_type=CLIENT_TYPE_BROWSER --insecure=false --client_ip=192.168.1.1"; then
+              echo "secure_invoke succeeded on attempt ${A}"
+              echo "Succeeded on attempt **${A}**." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            if [ "${A}" -lt "${ATTEMPTS}" ]; then
+              echo "secure_invoke failed; sleeping ${SLEEP_BETWEEN}s before retry..."
+              sleep "${SLEEP_BETWEEN}"
+            fi
           done
-
-      - name: Regional MIG instances (BFE, bidding, collector)
-        run: |
-          set -euo pipefail
-          for ROLE in bfe bidding collector; do
-            MIG="${OPERATOR}-${ENV}-${ROLE}-${REGION}-mig"
-            echo "## ${MIG}" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            gcloud compute instance-groups managed list-instances "${MIG}" \
-              --region="${REGION}" --project="${GCP_PROJECT_ID}" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || echo "(MIG not found or still creating)" | tee -a "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-          done
-
-      - name: VMs by label
-        run: |
-          set -euo pipefail
-          echo "## Instances (operator=ispirt, environment=ci)" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          gcloud compute instances list --project="${GCP_PROJECT_ID}" \
-            --filter="labels.environment=${ENV} AND labels.operator=${OPERATOR}" \
-            --format="table(name,zone,status,labels.service)" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::secure_invoke failed after ${ATTEMPTS} attempts"
+          exit 1
