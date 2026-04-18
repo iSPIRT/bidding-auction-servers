@@ -47,10 +47,6 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
-          # Use OAuth access token (not ADC JSON + SA impersonation refresh). The JSON path can hit
-          # iam.serviceAccounts.getAccessToken on token refresh even when WIF OIDC is valid.
-          token_format: access_token
-          create_credentials_file: false
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
