@@ -40,6 +40,7 @@ jobs:
               -v "${GITHUB_WORKSPACE}/get_bids_request.json:/data/get_bids_request.json:ro" \
               --entrypoint /secure_invoke/invoke \
               "${SECURE_INVOKE_IMAGE}" \
+              --op=invoke \
               --target_service=BFE \
               --input_file=/data/get_bids_request.json \
               --host_addr="${HOST_ADDR}" \
@@ -71,4 +72,4 @@ jobs:
           chmod +x ./builders/tools/cbuild
           exec ./builders/tools/cbuild \
             --image build-debian \
-            --cmd "bazel run //tools/secure_invoke:invoke -- --target_service=BFE --input_file=/src/workspace/get_bids_request.json --host_addr=${HOST_ADDR} --client_type=CLIENT_TYPE_BROWSER --insecure=false --client_ip=192.168.1.1"
+            --cmd "bazel run //tools/secure_invoke:invoke -- --op=invoke --target_service=BFE --input_file=/src/workspace/get_bids_request.json --host_addr=${HOST_ADDR} --client_type=CLIENT_TYPE_BROWSER --insecure=false --client_ip=192.168.1.1"
