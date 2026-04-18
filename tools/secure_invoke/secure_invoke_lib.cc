@@ -726,10 +726,12 @@ absl::StatusOr<std::string> ProcessResponse(
 
 absl::Status SendHttpRequestToBfe(
     const HpkeKeyset& keyset, std::optional<bool> enable_debug_reporting,
+    std::optional<bool> enable_sampled_debug_reporting,
     std::unique_ptr<BuyerFrontEnd::StubInterface> stub,
-    std::optional<bool> enable_unlimited_egress) {  
+    std::optional<bool> enable_unlimited_egress) {
   GetBidsRequest::GetBidsRawRequest get_bids_raw_request =
       GetBidsRawRequestFromInput(enable_debug_reporting,
+                                 enable_sampled_debug_reporting,
                                  enable_unlimited_egress);
   // Generate the JSON request and get the secret
   auto [get_bids_request_json, secret]= GenerateGetBidsRequestJson(

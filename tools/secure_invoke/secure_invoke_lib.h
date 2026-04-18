@@ -89,6 +89,7 @@ std::string PackagePlainTextGetBidsRequestToJson(
 // retrieved from absl flags that are used to run the script.
 absl::Status SendHttpRequestToBfe(
     const HpkeKeyset& keyset, std::optional<bool> enable_debug_reporting,
+    std::optional<bool> enable_sampled_debug_reporting = std::nullopt,
     std::unique_ptr<BuyerFrontEnd::StubInterface> stub = nullptr,
     std::optional<bool> enable_unlimited_egress = std::nullopt);
 

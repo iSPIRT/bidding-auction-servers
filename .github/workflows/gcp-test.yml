@@ -9,11 +9,11 @@ on:
 jobs:
   test:
     runs-on: ubuntu-22.04
-    # Bazel + first cbuild image pull can be slow.
     timeout-minutes: 120
     env:
       GCP_DOMAIN: ${{ vars.GCP_DOMAIN }}
       GCP_BFE_HOST: ${{ vars.GCP_BFE_HOST }}
+      SECURE_INVOKE_IMAGE: ${{ vars.SECURE_INVOKE_IMAGE }}
       OPERATOR: ispirt
       ENV: ci
     steps:
@@ -23,34 +23,52 @@ jobs:
       - name: Secure invoke (smoke test)
         run: |
           set -euo pipefail
-          test -n "${GCP_DOMAIN}" || (echo "Set repository variable GCP_DOMAIN (apex, e.g. example.com)" && exit 1)
-          test -f "${GITHUB_WORKSPACE}/get_bids_request.json" || (echo "Missing get_bids_request.json at repo root" && exit 1)
-          chmod +x ./builders/tools/cbuild
+          test -n "${GCP_DOMAIN}" || { echo "::error::Set variable GCP_DOMAIN"; exit 1; }
+          test -f "${GITHUB_WORKSPACE}/get_bids_request.json" || { echo "::error::Missing get_bids_request.json at repo root"; exit 1; }
 
           if [ -n "${GCP_BFE_HOST:-}" ]; then
             HOST_ADDR="${GCP_BFE_HOST}"
           else
             HOST_ADDR="${OPERATOR}-${ENV}.bfe.${GCP_DOMAIN}:443"
           fi
-          echo "BFE host_addr=${HOST_ADDR}"
-          echo "## secure_invoke smoke test" >> "$GITHUB_STEP_SUMMARY"
-          echo "host_addr=\`${HOST_ADDR}\`" >> "$GITHUB_STEP_SUMMARY"
 
-          ATTEMPTS=4
-          SLEEP_BETWEEN=120
-          for A in $(seq 1 "${ATTEMPTS}"); do
-            echo "secure_invoke attempt ${A}/${ATTEMPTS}..."
-            if ./builders/tools/cbuild \
-              --image build-debian \
-              --cmd "bazel run //tools/secure_invoke:invoke -- --target_service=BFE --input_file=/src/workspace/get_bids_request.json --host_addr=${HOST_ADDR} --client_type=CLIENT_TYPE_BROWSER --insecure=false --client_ip=192.168.1.1"; then
-              echo "secure_invoke succeeded on attempt ${A}"
-              echo "Succeeded on attempt **${A}**." >> "$GITHUB_STEP_SUMMARY"
-              exit 0
-            fi
-            if [ "${A}" -lt "${ATTEMPTS}" ]; then
-              echo "secure_invoke failed; sleeping ${SLEEP_BETWEEN}s before retry..."
-              sleep "${SLEEP_BETWEEN}"
-            fi
-          done
-          echo "::error::secure_invoke failed after ${ATTEMPTS} attempts"
-          exit 1
+          echo "## secure_invoke" >> "$GITHUB_STEP_SUMMARY"
+          echo "**host_addr:** \`${HOST_ADDR}\`" >> "$GITHUB_STEP_SUMMARY"
+
+          run_container() {
+            docker run --rm \
+              -v "${GITHUB_WORKSPACE}/get_bids_request.json:/data/get_bids_request.json:ro" \
+              --entrypoint /secure_invoke/invoke \
+              "${SECURE_INVOKE_IMAGE}" \
+              --target_service=BFE \
+              --input_file=/data/get_bids_request.json \
+              --host_addr="${HOST_ADDR}" \
+              --client_type=CLIENT_TYPE_BROWSER \
+              --insecure=false \
+              --client_ip=192.168.1.1
+          }
+
+          if [ -n "${SECURE_INVOKE_IMAGE:-}" ]; then
+            echo "Pulling ${SECURE_INVOKE_IMAGE}"
+            docker pull "${SECURE_INVOKE_IMAGE}"
+            echo "Using prebuilt image (retries apply to **run** only)." >> "$GITHUB_STEP_SUMMARY"
+
+            MAX=4
+            DELAY=120
+            for i in $(seq 1 "${MAX}"); do
+              echo "Attempt ${i}/${MAX}..."
+              if run_container; then
+                echo "Succeeded on attempt ${i}." >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+              [ "${i}" -lt "${MAX}" ] && sleep "${DELAY}"
+            done
+            echo "::error::secure_invoke failed after ${MAX} attempts"
+            exit 1
+          fi
+
+          echo "No SECURE_INVOKE_IMAGE — one-shot cbuild (slow)." >> "$GITHUB_STEP_SUMMARY"
+          chmod +x ./builders/tools/cbuild
+          exec ./builders/tools/cbuild \
+            --image build-debian \
+            --cmd "bazel run //tools/secure_invoke:invoke -- --target_service=BFE --input_file=/src/workspace/get_bids_request.json --host_addr=${HOST_ADDR} --client_type=CLIENT_TYPE_BROWSER --insecure=false --client_ip=192.168.1.1"
