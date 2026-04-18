@@ -24,7 +24,7 @@ SERVICE_NAME=buyer_frontend
 BIN=${SERVICE_NAME}
 if [[ -z $1 ]]; then
   # When we load from .tar file, we don't mount the binary
-  # and it is embededd as "server"
+  # and it is embededd as "server" 
   BIN="server"
 fi
 

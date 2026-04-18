@@ -66,7 +66,7 @@ SERVER_START_CMD=$(cat << END
 END
 )
 
-docker load -i dist/debian/bidding_service_image.tar
+#docker load -i dist/debian/bidding_service_image.tar
 
 docker run --network=host --security-opt=seccomp=unconfined \
 --security-opt=apparmor=unconfined --cap-add=CAP_SYS_ADMIN \
