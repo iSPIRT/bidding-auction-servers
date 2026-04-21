@@ -20,6 +20,7 @@ VERBOSE=0
 declare -r -a IMAGE_LIST=(
   "build-debian"
   "build-amazonlinux2023"
+  "nitro-cli-linux6"
   "presubmit"
 )
 
@@ -31,7 +32,7 @@ ENV_VARS+=(
 
 function usage() {
   local exitval=${1-1}
-  cat &>/dev/stderr << USAGE
+  cat >&2 << USAGE
 usage:
   $0 <options>
     --cmd <string>             bash command string to execute within the docker container
@@ -43,11 +44,11 @@ USAGE
     if [[ ${elem} == "${IMAGE}" ]]; then
       default_text=" (default)"
     fi
-    printf "                                   *  %s%s\n" "${elem}" "${default_text}" &>/dev/stderr
+    printf "                                   *  %s%s\n" "${elem}" "${default_text}" >&2
     default_text=""
   done
 
-  cat &>/dev/stderr << USAGE
+  cat >&2 << USAGE
     --env <key>[=<value>]      Name (or name=value) of exported environment variable, propagated into container
     --one-time                 Create a new container, avoid container reuse
     --without-shared-cache     Containers will not mount ${HOME}/.cache/bazel
@@ -58,8 +59,10 @@ USAGE
 
   Profiler flags:
     --cmd-profiler                  enable profiler for the command
-    --cpu-profiler-signal <int>     unix signal to use to trigger profiler output. Default: ${CPU_PROFILER_SIGNAL}
+    --cpu-profiler-signal <int>     unix signal to use to trigger CPU profiler output. Default: ${CPU_PROFILER_SIGNAL}
     --cpu-profiler-filename <path>  path for the cpu profiler output. Default: ${CPU_PROFILER_FILENAME}
+    --heap-profiler-signal <int>     unix signal to use to trigger heap profiler output. Default: ${HEAP_PROFILER_SIGNAL}
+    --heap-profiler-filename <path>  path for the heap profiler output. Default: ${HEAP_PROFILER_FILENAME}
 
 Environment variables (all optional):
     WORKSPACE                  Full path to the workspace (repo root)
@@ -84,8 +87,13 @@ declare -i DOCKER_SECCOMP_UNCONFINED=0
 declare -i ONE_TIME_CONTAINER=0
 declare -i KEEP_CONTAINER_RUNNING=0
 declare LONG_RUNNING_CONTAINER_TIMEOUT=8h
-declare CPU_PROFILER_FILENAME=benchmark.prof
+declare CPU_PROFILER_FILENAME=cpu.prof
 declare -i CPU_PROFILER_SIGNAL=12
+
+# If heap profiler filename is set by the caller then heap profile
+# is enabled instead of CPU profile.
+declare HEAP_PROFILER_FILENAME=""
+declare -i HEAP_PROFILER_SIGNAL=27
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -107,6 +115,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --cpu-profiler-signal)
       CPU_PROFILER_SIGNAL=$2
+      shift 2 || usage
+      ;;
+    --heap-profiler-filename)
+      HEAP_PROFILER_FILENAME="$2"
+      shift 2 || usage
+      ;;
+    --heap-profiler-signal)
+      HEAP_PROFILER_SIGNAL=$2
       shift 2 || usage
       ;;
     --env)
@@ -146,7 +162,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z ${IMAGE} ]]; then
-  printf -- "error: --image must be specified\n" &>/dev/stderr
+  printf -- "error: --image must be specified\n" >&2
   usage 1
 fi
 if [[ ${ONE_TIME_CONTAINER} -eq 0 ]] && [[ ${IMAGE} =~ ^build-* ]]; then
@@ -154,7 +170,7 @@ if [[ ${ONE_TIME_CONTAINER} -eq 0 ]] && [[ ${IMAGE} =~ ^build-* ]]; then
 fi
 # shellcheck disable=SC2076
 if ! [[ " ${IMAGE_LIST[*]} " =~ " ${IMAGE} " ]]; then
-    printf -- "error: image [%s] not recognized\n" "${IMAGE}" &>/dev/stderr
+    printf -- "error: image [%s] not recognized\n" "${IMAGE}" >&2
     usage 1
 fi
 
@@ -174,7 +190,7 @@ WORKSPACE_MOUNT="$(builder::get_docker_workspace_mount)"
 readonly WORKSPACE_MOUNT
 export WORKSPACE_MOUNT
 if [[ ${VERBOSE} -eq 1 ]]; then
-  printf "mounting workspace into container: %s\n" "${WORKSPACE_MOUNT}" &>/dev/stderr
+  printf "mounting workspace into container: %s\n" "${WORKSPACE_MOUNT}" >&2
 fi
 
 TOOLS_RELDIR="$(realpath "${TOOLS_DIR}" --relative-to="${PWD}")"
@@ -213,14 +229,21 @@ fi
 
 if [[ ${WITH_CMD_PROFILER} -eq 1 ]]; then
   if [[ ${IMAGE} != build-debian ]]; then
-    printf "error: --cmd-profiler is only compatible with build-debian\n" &>/dev/stderr
+    printf "error: --cmd-profiler is only compatible with build-debian\n" >&2
     usage 1
   fi
+  if [[ -z ${HEAP_PROFILER_FILENAME} ]]; then
   DOCKER_RUN_ARGS+=(
     "--env=CMD_PROFILER=LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libprofiler.so"
     "--env=CPUPROFILE=${CPU_PROFILER_FILENAME}"
     "--env=CPUPROFILESIGNAL=${CPU_PROFILER_SIGNAL}"
   )
+  else
+  DOCKER_RUN_ARGS+=(
+    "--env=HEAPPROFILE=${HEAP_PROFILER_FILENAME}"
+    "--env=HEAPPROFILESIGNAL=${HEAP_PROFILER_SIGNAL}"
+  )
+  fi
 fi
 
 # inside the docker build images, /bazel_root is the bazel cache dir, per the system-wide bazelrc
@@ -234,6 +257,27 @@ else
 fi
 if [[ ${WITH_DOCKER_SOCK} -eq 1 ]]; then
   DOCKER_RUN_ARGS+=("--volume=/var/run/docker.sock:/var/run/docker.sock")
+  DOCKER_STATIC_DIR="${WORKSPACE}/.docker-static"
+  DOCKER_STATIC="${DOCKER_STATIC_DIR}/docker"
+  BUILDX_STATIC="${DOCKER_STATIC_DIR}/docker-buildx"
+  DOCKER_STATIC_VERSION=27.5.1
+  BUILDX_STATIC_VERSION=0.21.1
+  if [[ ! -x ${DOCKER_STATIC} ]]; then
+    printf "downloading Docker static binary v%s for container compatibility\n" "${DOCKER_STATIC_VERSION}" >&2
+    mkdir -p "${DOCKER_STATIC_DIR}"
+    curl -fSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_STATIC_VERSION}.tgz" \
+      | tar xz -C "${DOCKER_STATIC_DIR}" --strip-components=1 docker/docker
+    chmod +x "${DOCKER_STATIC}"
+  fi
+  if [[ ! -x ${BUILDX_STATIC} ]]; then
+    printf "downloading Docker buildx plugin v%s for container compatibility\n" "${BUILDX_STATIC_VERSION}" >&2
+    mkdir -p "${DOCKER_STATIC_DIR}"
+    curl -fSL "https://github.com/docker/buildx/releases/download/v${BUILDX_STATIC_VERSION}/buildx-v${BUILDX_STATIC_VERSION}.linux-amd64" \
+      -o "${BUILDX_STATIC}"
+    chmod +x "${BUILDX_STATIC}"
+  fi
+  DOCKER_RUN_ARGS+=("--volume=${DOCKER_STATIC}:/usr/bin/docker")
+  DOCKER_RUN_ARGS+=("--volume=${BUILDX_STATIC}:/usr/libexec/docker/cli-plugins/docker-buildx")
 fi
 for evar in "${ENV_VARS[@]}"
 do
@@ -275,9 +319,9 @@ function running_container_for() {
   )
   local -r exited="$(docker "${docker_args[@]}" --all --filter "status=exited")"
   if [[ -n ${exited} ]]; then
-    printf "removing docker container: %s\n" "${name}" &>/dev/stderr
+    printf "removing docker container: %s\n" "${name}" >&2
     docker container rm --force "${name}" >/dev/null
-    printf "finished removing docker container: %s\n" "${name}" &>/dev/stderr
+    printf "finished removing docker container: %s\n" "${name}" >&2
   fi
   docker "${docker_args[@]}" --filter "status=running"
 }
@@ -286,7 +330,7 @@ function long_running_container() {
   local -r container_name="$1"
   local -r docker_running_container="$(running_container_for "${container_name}")"
   if [[ -z ${docker_running_container} ]]; then
-    printf "starting a new container [%s]\n" "${container_name}" &>/dev/stderr
+    printf "starting a new container [%s]\n" "${container_name}" >&2
     if [[ -n ${CMD} ]]; then
       # shellcheck disable=SC2068
       docker run \
@@ -314,7 +358,7 @@ if [[ ${KEEP_CONTAINER_RUNNING} -eq 1 ]]; then
       "${IMAGE_TAGGED}"
   else
     DOCKER_RUNNING_CONTAINER="$(long_running_container "${DOCKER_CONTAINER_NAME}")"
-    printf "reusing container [%s]\n" "${DOCKER_RUNNING_CONTAINER}" &>/dev/stderr
+    printf "reusing container [%s]\n" "${DOCKER_RUNNING_CONTAINER}" >&2
     if [[ ${WITH_CMD_PROFILER} -eq 1 ]]; then
       docker exec \
         "${DOCKER_EXEC_RUN_ARGS[@]}" \

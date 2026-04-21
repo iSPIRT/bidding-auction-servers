@@ -37,11 +37,13 @@ class SelectAdReactorForWeb : public SelectAdReactor {
       SelectAdResponse* response, server_common::Executor* executor,
       const ClientRegistry& clients,
       const TrustedServersConfigClient& config_client,
-      const ReportWinMap& report_win_map, bool enable_cancellation = false,
-      bool enable_kanon = false,
+      const ReportWinMap& report_win_map,
+      const RandomNumberGeneratorFactory& rng_factory,
+      bool enable_cancellation = false, bool enable_kanon = false,
       bool enable_buyer_private_aggregate_reporting = false,
       int per_adtech_paapi_contributions_limit = 100, bool fail_fast = true,
-      int max_buyers_solicited = 2);
+      int max_buyers_solicited = 2,
+      CompressionType sfe_bfe_compression_algo = CompressionType::kGzip);
   virtual ~SelectAdReactorForWeb() = default;
 
   // SelectAdReactorForWeb is neither copyable nor movable.

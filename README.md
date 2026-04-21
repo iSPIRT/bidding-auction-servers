@@ -1,6 +1,9 @@
 # Privacy Sandbox - Bidding and Auction service
 
 The current codebase represents the implementation and setup of the Bidding and Auction servers.
+
+**GCP buyer services deployment quickstart (build -> cloud setup -> deploy terraform stack -> smoke test -> cleanup):** see [QUICKSTART.md](QUICKSTART.md).
+
 Learn more about these servers:
 
 -   [bidding and auction services](https://github.com/privacysandbox/fledge-docs#bidding-and-auction-services)

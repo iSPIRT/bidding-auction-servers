@@ -18,11 +18,17 @@ terraform {
   required_providers {
     google-beta = {
       source  = "hashicorp/google-beta"
-      version = "5.31.0"
+      # 5.45+ documents SEV_SNP on instance templates; keep google/google-beta on the same minor.
+      version = "5.45.2"
     }
     google = {
       source  = "hashicorp/google"
-      version = "5.31.0"
+      version = "5.45.2"
     }
+  }
+
+  backend "gcs" {
+    bucket = "depa-inferencing-ci-tfstate"
+    prefix = "buyer"
   }
 }

@@ -1,0 +1,155 @@
+name: GCP Offer Services — release build
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      checkout_repository:
+        description: "Repo to build from (owner/repo). Leave empty to use current."
+        required: false
+        default: ""
+        type: string
+      build_ref:
+        description: "Git branch or tag to checkout and build"
+        required: true
+        default: "main"
+        type: string
+      services:
+        description: "Service to be built (comma-separated)"
+        required: true
+        default: "bidding_service,buyer_frontend_service"
+        type: string
+      build_flavor:
+        description: "Build flavour"
+        required: true
+        default: "non_prod"
+        type: choice
+        options:
+          - non_prod
+          - prod
+      release_tag:
+        description: "Image tag suffix"
+        required: true
+        default: "4.10.0"
+        type: string
+      image_repo:
+        description: "Image repo prefix"
+        required: true
+        default: ispirt.azurecr.io/depainferencing/gcp
+        type: string
+      run_tests:
+        description: "Run tests"
+        required: true
+        default: false
+        type: boolean
+      run_precommit_checks:
+        description: "Run pre-commit checks"
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  build-and-push-gcp:
+    # Large builds often need a self-hosted runner.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    env:
+      REGISTRY: ${{ vars.REGISTRY }}
+    steps:
+      - name: Display inputs
+        run: |
+          echo "build_ref=${{ inputs.build_ref }}"
+          echo "checkout_repository=${{ inputs.checkout_repository }}"
+          echo "build_flavor=${{ inputs.build_flavor }}"
+          echo "run_tests=${{ inputs.run_tests }}"
+          echo "run_precommit_checks=${{ inputs.run_precommit_checks }}"
+          echo "services=${{ inputs.services }}"
+          echo "release_tag=${{ inputs.release_tag }}"
+          echo "image_repo=${{ inputs.image_repo }}"
+          echo "REGISTRY=${REGISTRY}"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.checkout_repository != '' && inputs.checkout_repository || github.repository }}
+          ref: ${{ inputs.build_ref }}
+          fetch-depth: 0
+
+      - name: Verify ACR credentials
+        run: |
+          test -n "${REGISTRY}" || (echo "Set repository variable REGISTRY (e.g. ispirt.azurecr.io)" && exit 1)
+          test -n "${{ secrets.AZURE_CONTAINER_REGISTRY_USERNAME }}" || (echo "Missing secret AZURE_CONTAINER_REGISTRY_USERNAME" && exit 1)
+          test -n "${{ secrets.AZURE_CONTAINER_REGISTRY_PASSWORD }}" || (echo "Missing secret AZURE_CONTAINER_REGISTRY_PASSWORD" && exit 1)
+
+      - name: Log in to Azure Container Registry
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ env.REGISTRY }}
+          username: ${{ secrets.AZURE_CONTAINER_REGISTRY_USERNAME }}
+          password: ${{ secrets.AZURE_CONTAINER_REGISTRY_PASSWORD }}
+
+      - name: Make build script executable
+        run: chmod +x ./production/packaging/build_and_test_all_in_docker
+
+      - name: Parse service paths
+        id: parse_services
+        run: |
+          services="${{ inputs.services }}"
+          service_args=""
+          IFS=',' read -ra SERVICE_ARRAY <<< "$services"
+          for service in "${SERVICE_ARRAY[@]}"; do
+            s="${service// /}"
+            service_args="$service_args --service-path ${s}"
+          done
+          echo "service_args=${service_args}" >> "$GITHUB_OUTPUT"
+          echo "Parsed: ${service_args}"
+
+      - name: Compute image tag
+        id: image_tag
+        run: |
+          if [ "${{ inputs.build_flavor }}" = "non_prod" ]; then
+            prefix="nonprod"
+          else
+            prefix="prod"
+          fi
+          tag="${prefix}-${{ inputs.release_tag }}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "GCP image tag: ${tag}"
+
+      - name: Optional Docker cleanup
+        run: |
+          docker stop $(docker ps --filter "name=cbuild" --format "{{.Names}}") 2>/dev/null || true
+          docker rm $(docker ps -a --filter "name=cbuild" --format "{{.Names}}") 2>/dev/null || true
+
+      - name: Run packaging (GCP TEE images + push)
+        run: |
+          set -euo pipefail
+          TEST_FLAG="--no-tests"
+          PRECOMMIT_FLAG="--no-precommit"
+          if [ "${{ inputs.run_tests }}" = "true" ]; then
+            TEST_FLAG=""
+          fi
+          if [ "${{ inputs.run_precommit_checks }}" = "true" ]; then
+            PRECOMMIT_FLAG=""
+          fi
+          ./production/packaging/build_and_test_all_in_docker \
+            ${{ steps.parse_services.outputs.service_args }} \
+            ${TEST_FLAG} \
+            ${PRECOMMIT_FLAG} \
+            --build-flavor ${{ inputs.build_flavor }} \
+            --platform gcp \
+            --instance gcp \
+            --gcp-image-repo "${{ inputs.image_repo }}" \
+            --gcp-image-tag "${{ steps.image_tag.outputs.tag }}"
+
+      - name: Summary
+        run: |
+          echo "## GCP BA images" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Repository @ ref:** \`${{ inputs.checkout_repository != '' && inputs.checkout_repository || github.repository }}@${{ inputs.build_ref }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Tag:** \`${{ steps.image_tag.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Repo prefix:** \`${{ inputs.image_repo }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Use the same values in buyer \`terraform.tfvars\` (\`image_repo\`, \`image_tag\`)." >> "$GITHUB_STEP_SUMMARY"

@@ -24,6 +24,10 @@ cc_library(
     hdrs = [
         "proto_utils.h",
     ],
+    visibility = [
+        "//services/auction_service:__pkg__",
+        "//services/auction_service/benchmarking:__pkg__",
+    ],
     deps = [
         "//api:bidding_auction_servers_cc_grpc_proto",
         "//services/auction_service:auction_constants",
@@ -53,6 +57,7 @@ cc_test(
         "//services/auction_service:score_ads_reactor_test_util",
         "//services/common/test:random",
         "//services/common/util:json_util",
+        "//services/common/util:proto_util",
         "@com_google_googletest//:gtest_main",
         "@google_privacysandbox_servers_common//src/core/test/utils",
     ],

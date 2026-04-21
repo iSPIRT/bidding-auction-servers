@@ -82,6 +82,12 @@ locals {
     DEBUG_SAMPLE_RATE_MICRO            = "0"
     TEST_MODE                          = "" # Example: "false"
     BUYER_CODE_FETCH_CONFIG            = "" # See README for flag descriptions
+    # Enable for tracking BYOB executions in a request as a batch.
+    # BYOB_BATCHING_CONFIG               = "" # Example: "{
+    #    "batchStartTimeoutMs": 30,
+    #    "maxPendingBatchesInPool": 100,
+    #    "useSeparateThreadpool": true,
+    #  }"
     # Example for V8:
     # "{
     #    "fetchMode": 0,
@@ -146,19 +152,25 @@ locals {
     MAX_ALLOWED_SIZE_DEBUG_URL_BYTES   = "" # Example: "65536"
     MAX_ALLOWED_SIZE_ALL_DEBUG_URLS_KB = "" # Example: "3000"
 
-    INFERENCE_SIDECAR_BINARY_PATH    = "" # Example: "/server/bin/inference_sidecar_<module_name>"
-    INFERENCE_MODEL_BUCKET_NAME      = "" # Example: "<bucket_name>"
-    INFERENCE_MODEL_CONFIG_PATH      = "" # Example: "model_config.json"
-    INFERENCE_MODEL_FETCH_PERIOD_MS  = "" # Example: "300000"
-    INFERENCE_SIDECAR_RUNTIME_CONFIG = "" # Example:
+    INFERENCE_SIDECAR_BINARY_PATH            = "" # Example: "/server/bin/inference_sidecar_<module_name>"
+    INFERENCE_MODEL_BUCKET_NAME              = "" # Example: "<bucket_name>"
+    INFERENCE_MODEL_CONFIG_PATH              = "" # Example: "model_config.json"
+    INFERENCE_MODEL_FETCH_PERIOD_MS          = "" # Example: "300000"
+    INFERENCE_SIDECAR_RUNTIME_CONFIG         = "" # Example:
+    INFERENCE_MODEL_REGISTRATION_TIMEOUT_MS  = "60000"
+    INFERENCE_MODEL_EXECUTION_TIMEOUT_MS     = "60000"
+    INFERENCE_MODEL_PATHS_REQUEST_TIMEOUT_MS = "60000"
+    INFERENCE_ENABLE_PROTO_PARSING           = false
+    INFERENCE_ENABLE_CANCELLATION_AT_BIDDING = false
     # "{
     #    "num_interop_threads": 4,
     #    "num_intraop_threads": 4,
-    #    "module_name": "tensorflow_v2_14_0",
+    #    "module_name": "tensorflow_v2_17_0",
     #    "cpuset": [0, 1, 2, 3],
     #    "tcmalloc_release_bytes_per_sec": 0,
     #    "tcmalloc_max_total_thread_cache_bytes": 0,
     #    "tcmalloc_max_per_cpu_cache_bytes": 0,
+    #    "inference_enable_cancellation_at_sidecar": false,
     # }"
 
     # TCMalloc related config parameters.
@@ -169,6 +181,7 @@ locals {
     BFE_TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES                 = "10737418240"
 
     ENABLE_CHAFFING        = "false"
+    ENABLE_CHAFFING_V2     = "false"
     ENABLE_PRIORITY_VECTOR = "false"
     # Possible values:
     # NOT_FETCHED: No call to KV server is made. All interest groups are sent to generateBid().
@@ -176,13 +189,47 @@ locals {
     # Any other value/REQUIRED (default): Call to KV server is made and must not fail. Only those interest groups are sent to generateBid() that have at least one bidding signals key for which non-empty bidding signals are fetched.
     BIDDING_SIGNALS_FETCH_MODE = "REQUIRED"
 
-    // The following options can be adjusted to affect the behavior of libcurl, which is used in the BYOS buyer KV signals fetch. Limits in these parameters have been shown to improve BFE performance and stability when under high throughput load. You may adjust these to be more restrictive if you are experiencing BFE becoming unresponsive, or less restrictive if you find BFE throuhgput insufficient.
-    // Constrains the size of the libcurl connection cache. Recommended value of 512 for stability. See https://curl.se/libcurl/c/CURLMOPT_MAXCONNECTS.html.
-    CURLMOPT_MAXCONNECTS = 512
-    // Sets the maximum number of simultaneously open connections. Recommended value of 24 for stability. See https://curl.se/libcurl/c/CURLMOPT_MAX_TOTAL_CONNECTIONS.html.
-    CURLMOPT_MAX_TOTAL_CONNECTIONS = 24
-    // Sets the maximum number of connections to a single host. 0 is default, means unlimited. https://curl.se/libcurl/c/CURLMOPT_MAX_HOST_CONNECTIONS.html.
+    ###### [BEGIN] Libcurl parameters.
+    #
+    # Libcurl is used in frontend servers to fetch real time signals for BYOS
+    # KVs in the request path, as well as to fetch UDF blobs off the request
+    # path in the backend servers. The following params should be tuned based
+    # on the expected load to support, the capacity of the servers and expected
+    # size of data/signals/blob to be transfered.
+    #
+    # Number of curl workers to use in BFE/bidding to run transfers using curl
+    # handles. This number should be scaled based on number of vCPUs available
+    # to the instance. Note: 1. Each worker uses one thread. 2. Performance
+    # degradation has been observed when using more than 4 workers.
+    CURL_BFE_NUM_WORKERS     = 4
+    CURL_BIDDING_NUM_WORKERS = 1 # Recommended to keep it 1.
+    #
+    # Maximum wait time for a curl request to be allowed in the queue. After
+    # this time expires, the request is removed from the queue and the original
+    # request to the service will fail.
+    CURL_BFE_QUEUE_MAX_WAIT_MS     = 1000
+    CURL_BIDDING_QUEUE_MAX_WAIT_MS = 2000
+    #
+    # Number of pending curl requests that have not yet been scheduled to run.
+    # This should be scaled depending on the stack capacity, intended QPS,
+    # max wait time limit imposed on the requests in the queue etc.
+    CURL_BFE_WORK_QUEUE_LENGTH     = 1000
+    CURL_BIDDING_WORK_QUEUE_LENGTH = 10 # Recommended to keep it 10.
+    #
+    # Constrains the size of the libcurl connection cache.
+    # 0 is default, means unlimited.
+    # See https://curl.se/libcurl/c/CURLMOPT_MAXCONNECTS.html.
+    CURLMOPT_MAXCONNECTS = 0
+    # Sets the maximum number of simultaneously open connections.
+    # 0 is default, means unlimited.
+    # See https://curl.se/libcurl/c/CURLMOPT_MAX_TOTAL_CONNECTIONS.html.
+    CURLMOPT_MAX_TOTAL_CONNECTIONS = 0
+    # Sets the maximum number of connections to a single host.
+    # 0 is default, means unlimited.
+    # See: https://curl.se/libcurl/c/CURLMOPT_MAX_HOST_CONNECTIONS.html.
     CURLMOPT_MAX_HOST_CONNECTIONS = 0
+    #
+    ###### [END] Libcurl parameters.
   }
 }
 
@@ -207,10 +254,10 @@ module "buyer-us-east-1" {
   # Machine sizing
   bfe_instance_type          = ""    # Example: "c6i.2xlarge"
   bidding_instance_type      = ""    # Example: "c6i.2xlarge"
-  bfe_enclave_cpu_count      = 6     # Example: 6
-  bfe_enclave_memory_mib     = 12000 # Example: 12000
-  bidding_enclave_cpu_count  = 6     # Example: 6
-  bidding_enclave_memory_mib = 12000 # Example: 12000
+  bfe_enclave_cpu_count      = 6     # Example: 6, minimum 2.
+  bfe_enclave_memory_mib     = 12000 # Example: 12000, minimum 4000.
+  bidding_enclave_cpu_count  = 6     # Example: 6, minimum 2.
+  bidding_enclave_memory_mib = 12000 # Example: 12000, minimum 4000.
   runtime_flags = merge(local.runtime_flags, {
     UDF_NUM_WORKERS     = "" # Example: "48" Must be <=vCPUs in bidding_enclave_cpu_count, and should be equal for best performance.
     JS_WORKER_QUEUE_LEN = "" # Example: "100".
@@ -255,4 +302,9 @@ module "buyer-us-east-1" {
   # The value is required for "awss3" exporter defined in production/packaging/aws/common/ami/otel_collector_config.yaml.
   # Alternatively, "awss3" must not be used in otel_collector_config.yaml.
   consented_request_s3_bucket = "" # Example: ${name of a s3 bucket}.
+}
+
+module "log_based_metric" {
+  source      = "../../services/log_based_metric"
+  environment = local.environment
 }

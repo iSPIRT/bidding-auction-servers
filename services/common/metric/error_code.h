@@ -60,13 +60,16 @@ inline constexpr absl::string_view kBfeErrorCode[]{
 
 inline constexpr absl::string_view kBiddingGenerateBidsDispatchResponseError =
     "GenerateBids dispatch response error";
-inline constexpr absl::string_view kBiddingGenerateBidsTimedOutError =
+inline constexpr absl::string_view kBiddingGenerateBidsDispatchTimedOutError =
     "GenerateBids dispatch timed out";
+inline constexpr absl::string_view kBiddingGenerateBidsTimedOutError =
+    "GenerateBids execution timed out";
 inline constexpr absl::string_view kBiddingGenerateBidsFailedToDispatchCode =
     "GenerateBids failed to dispatch code";
 
 inline constexpr absl::string_view kBiddingErrorCode[]{
     kBiddingGenerateBidsDispatchResponseError,
+    kBiddingGenerateBidsDispatchTimedOutError,
     kBiddingGenerateBidsTimedOutError,
     kBiddingGenerateBidsFailedToDispatchCode,
 };
@@ -85,12 +88,14 @@ inline constexpr absl::string_view kSfeSelectAdNoSuccessfulBid =
     "SelectAd no successful bid";
 inline constexpr absl::string_view kSfeSelectAdRequestBadInput =
     "SelectAd request bad input";
+inline constexpr absl::string_view kSfeInvalidComponentAuctionInputs =
+    "SelectAd invalid component auctions";
 
 inline constexpr absl::string_view kSfeErrorCode[]{
     kSfeGetBidsFailedToCall,         kSfeGetBidsResponseError,
     kSfeScoreAdsFailedToCall,        kSfeScoreAdsResponseError,
-    kSfeScoringSignalsResponseError, kSfeSelectAdNoSuccessfulBid,
-    kSfeSelectAdRequestBadInput,
+    kSfeScoringSignalsResponseError, kSfeInvalidComponentAuctionInputs,
+    kSfeSelectAdNoSuccessfulBid,     kSfeSelectAdRequestBadInput,
 };
 
 }  // namespace privacy_sandbox::bidding_auction_servers::metric

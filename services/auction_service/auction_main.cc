@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include <apis/privacysandbox/apis/parc/v0/parc_service.grpc.pb.h>
 #include <aws/core/Aws.h>
 #include <google/protobuf/util/json_util.h>
 
@@ -42,9 +43,11 @@
 #include "services/auction_service/runtime_flags.h"
 #include "services/auction_service/udf_fetcher/auction_code_fetch_config.pb.h"
 #include "services/auction_service/udf_fetcher/seller_udf_fetch_manager.h"
+#include "services/common/attestation/adtech_enrollment_cache.h"
+#include "services/common/attestation/adtech_enrollment_fetcher.h"
 #include "services/common/clients/config/trusted_server_config_client.h"
 #include "services/common/clients/config/trusted_server_config_client_util.h"
-#include "services/common/clients/http/multi_curl_http_fetcher_async.h"
+#include "services/common/clients/http/multi_curl_http_fetcher_async_no_queue.h"
 #include "services/common/constants/common_constants.h"
 #include "services/common/data_fetch/periodic_bucket_fetcher_metrics.h"
 #include "services/common/data_fetch/version_util.h"
@@ -53,6 +56,7 @@
 #include "services/common/feature_flags.h"
 #include "services/common/metric/udf_metric.h"
 #include "services/common/telemetry/configure_telemetry.h"
+#include "services/common/util/blob_storage_client_utils.h"
 #include "services/common/util/signal_handler.h"
 #include "services/common/util/tcmalloc_utils.h"
 #include "src/concurrent/event_engine_executor.h"
@@ -93,6 +97,17 @@ ABSL_FLAG(
     std::optional<std::string>, scoring_signals_fetch_mode, std::nullopt,
     "Specifies whether KV lookup for scoring signals is made or not, and if "
     "so, whether scoring signals are required for scoring ads or not.");
+ABSL_FLAG(std::optional<int>, curl_auction_num_workers, 2,
+          "Number of threads to use to run transfers over curl handles");
+ABSL_FLAG(std::optional<int>, curl_auction_queue_max_wait_ms, 1000,
+          "Maximum amount of time (in milliseconds) to wait for curl request "
+          "processing");
+ABSL_FLAG(std::optional<int>, curl_auction_work_queue_length, 5000,
+          "Maximum number of outstanding curl requests that are allowed to "
+          "wait for processing");
+ABSL_FLAG(std::optional<bool>, enable_fdo_attestation, true,
+          "If true, fDO destinations given by AdTechs are attested against API "
+          "enrollment list.");
 
 namespace privacy_sandbox::bidding_auction_servers {
 
@@ -109,7 +124,8 @@ class ScoreAdsReactorCreator {
                          V8Dispatcher& v8_dispatcher,
                          bool enable_auction_service_benchmark)
       : v8_dispatch_client_(v8_dispatcher),
-        async_reporter_(std::make_unique<MultiCurlHttpFetcherAsync>(executor)),
+        async_reporter_(
+            std::make_unique<MultiCurlHttpFetcherAsyncNoQueue>(executor)),
         enable_auction_service_benchmark_(enable_auction_service_benchmark) {
     // TODO(b/334909636) : AsyncReporter should not own HttpFetcher,
     // this needs to be decoupled so we can test different configurations.
@@ -120,7 +136,8 @@ class ScoreAdsReactorCreator {
       ScoreAdsResponse* response,
       server_common::KeyFetcherManagerInterface* key_fetcher_manager,
       CryptoClientWrapperInterface* crypto_client,
-      const AuctionServiceRuntimeConfig& runtime_config) {
+      const AuctionServiceRuntimeConfig& runtime_config,
+      AdtechEnrollmentCacheInterface* adtech_attestation_cache) {
     std::unique_ptr<ScoreAdsBenchmarkingLogger> benchmarking_logger =
         enable_auction_service_benchmark_
             ? std::make_unique<ScoreAdsBenchmarkingLogger>(
@@ -129,7 +146,7 @@ class ScoreAdsReactorCreator {
     return std::make_unique<ScoreAdsReactor>(
         context, v8_dispatch_client_, request, response,
         std::move(benchmarking_logger), key_fetcher_manager, crypto_client,
-        async_reporter_, runtime_config);
+        async_reporter_, runtime_config, adtech_attestation_cache);
   }
 
  private:
@@ -201,11 +218,19 @@ absl::StatusOr<TrustedServersConfigClient> GetConfigClient(
                         AUCTION_TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES);
   config_client.SetFlag(FLAGS_scoring_signals_fetch_mode,
                         SCORING_SIGNALS_FETCH_MODE);
+  config_client.SetFlag(FLAGS_parc_addr, PARC_ADDR);
+  config_client.SetFlag(FLAGS_curl_auction_num_workers,
+                        CURL_AUCTION_NUM_WORKERS);
+  config_client.SetFlag(FLAGS_curl_auction_queue_max_wait_ms,
+                        CURL_AUCTION_QUEUE_MAX_WAIT_MS);
+  config_client.SetFlag(FLAGS_curl_auction_work_queue_length,
+                        CURL_AUCTION_WORK_QUEUE_LENGTH);
+  config_client.SetFlag(FLAGS_enable_fdo_attestation, ENABLE_FDO_ATTESTATION);
 
-  if (absl::GetFlag(FLAGS_init_config_client)) {
-    PS_RETURN_IF_ERROR(config_client.Init(config_param_prefix)).LogError()
-        << "Config client failed to initialize.";
-  }
+  PS_RETURN_IF_ERROR(
+      MaybeInitConfigClient(absl::GetFlag(FLAGS_init_config_client),
+                            config_client, config_param_prefix));
+
   // Set verbosity
   server_common::log::SetGlobalPSVLogLevel(
       config_client.GetIntParameter(PS_VERBOSITY));
@@ -214,7 +239,7 @@ absl::StatusOr<TrustedServersConfigClient> GetConfigClient(
       config_client.GetBooleanParameter(ENABLE_PROTECTED_AUDIENCE);
   const bool enable_protected_app_signals =
       config_client.GetBooleanParameter(ENABLE_PROTECTED_APP_SIGNALS);
-  CHECK(enable_protected_audience || enable_protected_app_signals)
+  PS_CHECK(enable_protected_audience || enable_protected_app_signals)
       << "Neither Protected Audience nor Protected App Signals support "
          "enabled.";
   PS_LOG(INFO) << "Protected Audience support enabled on the service: "
@@ -266,7 +291,8 @@ absl::Status RunServer() {
   std::string_view port = config_client.GetStringParameter(PORT);
   std::string server_address = absl::StrCat("0.0.0.0:", port);
 
-  CHECK(!config_client.GetStringParameter(SELLER_CODE_FETCH_CONFIG).empty())
+  PS_CHECK(!config_client.GetStringParameter(SELLER_CODE_FETCH_CONFIG).empty(),
+           SystemLogContext())
       << "SELLER_CODE_FETCH_CONFIG is a mandatory flag.";
 
   auto dispatcher = V8Dispatcher([&config_client]() {
@@ -283,15 +309,18 @@ absl::Status RunServer() {
   std::unique_ptr<server_common::Executor> executor =
       std::make_unique<server_common::EventEngineExecutor>(
           grpc_event_engine::experimental::CreateEventEngine());
+  ScheduleTcmallocProcessBackgroundAction(executor.get());
 
   // Convert Json string into a AuctionCodeBlobFetcherConfig proto
   auction_service::SellerCodeFetchConfig code_fetch_proto;
   absl::Status result = google::protobuf::util::JsonStringToMessage(
       config_client.GetStringParameter(SELLER_CODE_FETCH_CONFIG).data(),
       &code_fetch_proto);
-  CHECK(result.ok()) << "Could not parse SELLER_CODE_FETCH_CONFIG JsonString "
-                        "to a proto message: "
-                     << result;
+  PS_CHECK_OK(result, SystemLogContext())
+      << "Could not parse SELLER_CODE_FETCH_CONFIG JsonString "
+         "to a proto message: "
+      << result;
+
   bool test_mode = config_client.GetBooleanParameter(TEST_MODE);
   code_fetch_proto.set_test_mode(test_mode);
   bool enable_seller_debug_url_generation =
@@ -307,11 +336,29 @@ absl::Status RunServer() {
   const bool enable_protected_app_signals =
       config_client.GetBooleanParameter(ENABLE_PROTECTED_APP_SIGNALS);
   bool enable_seller_and_buyer_udf_isolation = true;
-
   code_fetch_proto.set_enable_seller_and_buyer_udf_isolation(
       enable_seller_and_buyer_udf_isolation);
-  MultiCurlHttpFetcherAsync http_fetcher =
-      MultiCurlHttpFetcherAsync(executor.get());
+
+  int num_curl_workers =
+      config_client.GetIntParameter(CURL_AUCTION_NUM_WORKERS);
+  int curl_max_wait_time_ms =
+      config_client.GetIntParameter(CURL_AUCTION_QUEUE_MAX_WAIT_MS);
+  int curl_queue_length =
+      config_client.GetIntParameter(CURL_AUCTION_WORK_QUEUE_LENGTH);
+  MultiCurlHttpFetcherAsyncNoQueue http_fetcher =
+      MultiCurlHttpFetcherAsyncNoQueue(
+          executor.get(),
+          MultiCurlHttpFetcherAsyncOptions{
+              .num_curl_workers = num_curl_workers > 0 ? num_curl_workers
+                                                       : kDefaultNumCurlWorkers,
+              .curl_max_wait_time_ms =
+                  curl_max_wait_time_ms > 0
+                      ? absl::Milliseconds(curl_max_wait_time_ms)
+                      : kDefaultMaxRequestWaitTime,
+              .curl_queue_length = curl_queue_length > 0
+                                       ? curl_queue_length
+                                       : kDefaultMaxCurlPendingRequests,
+          });
   HttpFetcherAsync* seller_udf_fetcher = &http_fetcher;
   HttpFetcherAsync* buyer_reporting_udf_fetcher = &http_fetcher;
   // If protected app signals are not enabled, we will not score any PAS
@@ -320,15 +367,31 @@ absl::Status RunServer() {
     code_fetch_proto.clear_protected_app_signals_buyer_report_win_js_urls();
   }
   SellerUdfFetchManager code_fetch_manager(
-      BlobStorageClientFactory::Create(), executor.get(), seller_udf_fetcher,
+      BuildBlobStorageClient(), executor.get(), seller_udf_fetcher,
       buyer_reporting_udf_fetcher, &dispatcher, code_fetch_proto,
       enable_protected_app_signals);
   PS_RETURN_IF_ERROR(code_fetch_manager.Init())
       << "Failed to initialize UDF fetch.";
 
+  std::unique_ptr<AdtechEnrollmentCache> attestation_cache = nullptr;
+  std::unique_ptr<AdtechEnrollmentFetcher> enrollment_fetcher = nullptr;
+  if (config_client.GetBooleanParameter(ENABLE_FDO_ATTESTATION)) {
+    attestation_cache = std::make_unique<AdtechEnrollmentCache>();
+    enrollment_fetcher = std::make_unique<AdtechEnrollmentFetcher>(
+        /* url_endpoint = */
+        "https://www.gstatic.com/privacy_sandbox/enrollment_data/"
+        "enrollments_web.binpb",
+        /* fetch_period = */ absl::Hours(24), &http_fetcher, executor.get(),
+        /* time_out_ms = */ absl::Milliseconds(10000), attestation_cache.get());
+  }
+  if (enrollment_fetcher) {
+    PS_RETURN_IF_ERROR(enrollment_fetcher->Start())
+        << "Failed to start Adtech Enrollment Fetcher for fDO attestation.";
+  }
+
   AuctionServiceRuntimeConfig runtime_config = {
       .enable_seller_debug_url_generation = enable_seller_debug_url_generation,
-      .roma_timeout_ms = absl::StrCat(
+      .roma_timeout_duration = absl::StrCat(
           config_client.GetStringParameter(ROMA_TIMEOUT_MS).data(), "ms"),
       .enable_adtech_code_logging = enable_adtech_code_logging,
       .enable_report_result_url_generation =
@@ -363,7 +426,7 @@ absl::Status RunServer() {
   AuctionService auction_service(
       absl::bind_front(&ScoreAdsReactorCreator::Create, &reactor_creator),
       CreateKeyFetcherManager(config_client, /* public_key_fetcher= */ nullptr),
-      CreateCryptoClient(), std::move(runtime_config));
+      CreateCryptoClient(), std::move(runtime_config), attestation_cache.get());
 
   PS_RETURN_IF_ERROR(
       PeriodicBucketFetcherMetrics::RegisterAuctionServiceMetrics(
@@ -379,8 +442,9 @@ absl::Status RunServer() {
 
   if (config_client.HasParameter(HEALTHCHECK_PORT) &&
       !config_client.GetStringParameter(HEALTHCHECK_PORT).empty()) {
-    CHECK(config_client.GetStringParameter(HEALTHCHECK_PORT) !=
-          config_client.GetStringParameter(PORT))
+    PS_CHECK(config_client.GetStringParameter(HEALTHCHECK_PORT) !=
+                 config_client.GetStringParameter(PORT),
+             SystemLogContext())
         << "Healthcheck port must be unique.";
     builder.AddListeningPort(
         absl::StrCat("0.0.0.0:",
@@ -416,7 +480,12 @@ int main(int argc, char** argv) {
   privacysandbox::server_common::SetRLimits({
       .enable_core_dumps = PS_ENABLE_CORE_DUMPS,
   });
-  absl::FailureSignalHandlerOptions options = {.call_previous_handler = true};
+  absl::FailureSignalHandlerOptions options = {
+      .call_previous_handler = true,
+      .writerfn =
+          privacy_sandbox::bidding_auction_servers::WriteFailureMessage};
+  privacy_sandbox::bidding_auction_servers::extra_signal_writerfn =
+      options.writerfn;
   absl::InstallFailureSignalHandler(options);
   absl::ParseCommandLine(argc, argv);
   absl::InitializeLog();
@@ -427,11 +496,12 @@ int main(int argc, char** argv) {
   bool init_config_client = absl::GetFlag(FLAGS_init_config_client);
   if (init_config_client) {
     cpio_options.log_option = google::scp::cpio::LogOption::kConsoleLog;
-    CHECK(google::scp::cpio::Cpio::InitCpio(cpio_options).Successful())
+    PS_CHECK(google::scp::cpio::Cpio::InitCpio(cpio_options).Successful())
         << "Failed to initialize CPIO library";
   }
 
-  CHECK_OK(privacy_sandbox::bidding_auction_servers::RunServer())
+  PS_CHECK_OK(privacy_sandbox::bidding_auction_servers::RunServer(),
+              privacy_sandbox::bidding_auction_servers::SystemLogContext())
       << "Failed to run server.";
 
   if (init_config_client) {

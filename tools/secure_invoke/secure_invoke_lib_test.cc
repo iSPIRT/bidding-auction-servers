@@ -234,12 +234,13 @@ TEST_F(SecureInvokeLib, RequestToBfeNeedsClientIp) {
       std::move(crypto_client_),
       std::move(kv_async_client_),
       get_bids_config_,
-      executor};
+      executor,
+      /* chaff_median_trackers */ {}};
 
   auto start_service_result = StartLocalService(&buyer_front_end_service);
   absl::SetFlag(&FLAGS_host_addr,
                 absl::StrFormat("localhost:%d", start_service_result.port));
-  EXPECT_DEATH(auto unused = SendRequestToBfe(default_keyset_, false),
+  EXPECT_DEATH(auto unused = SendRequestToBfe(default_keyset_),
                "Client IP must be specified");
 }
 
@@ -253,10 +254,11 @@ TEST_F(SecureInvokeLib, RequestToBfeNeedsServerAddress) {
       std::move(crypto_client_),
       std::move(kv_async_client_),
       get_bids_config_,
-      executor};
+      executor,
+      /* chaff_median_trackers */ {}};
 
   auto start_service_result = StartLocalService(&buyer_front_end_service);
-  EXPECT_DEATH(auto unused = SendRequestToBfe(default_keyset_, false),
+  EXPECT_DEATH(auto unused = SendRequestToBfe(default_keyset_),
                "BFE host address must be specified");
 }
 
@@ -270,7 +272,8 @@ TEST_F(SecureInvokeLib, RequestToBfeNeedsUserAgent) {
       std::move(crypto_client_),
       std::move(kv_async_client_),
       get_bids_config_,
-      executor};
+      executor,
+      /* chaff_median_trackers */ {}};
 
   auto start_service_result = StartLocalService(&buyer_front_end_service);
   absl::SetFlag(&FLAGS_host_addr,
@@ -278,7 +281,7 @@ TEST_F(SecureInvokeLib, RequestToBfeNeedsUserAgent) {
   absl::SetFlag(&FLAGS_client_ip, kClientIp);
   // Setting empty user agent would cause the validation failure.
   absl::SetFlag(&FLAGS_client_user_agent, "");
-  EXPECT_DEATH(auto unused = SendRequestToBfe(default_keyset_, false),
+  EXPECT_DEATH(auto unused = SendRequestToBfe(default_keyset_),
                "User Agent must be specified");
 }
 
@@ -292,7 +295,8 @@ TEST_F(SecureInvokeLib, RequestToBfeNeedsAcceptLanguage) {
       std::move(crypto_client_),
       std::move(kv_async_client_),
       get_bids_config_,
-      executor};
+      executor,
+      /* chaff_median_trackers */ {}};
 
   auto start_service_result = StartLocalService(&buyer_front_end_service);
   absl::SetFlag(&FLAGS_host_addr,
@@ -300,7 +304,7 @@ TEST_F(SecureInvokeLib, RequestToBfeNeedsAcceptLanguage) {
   absl::SetFlag(&FLAGS_client_ip, kClientIp);
   // Setting empty client accept language would cause the validation failure.
   absl::SetFlag(&FLAGS_client_accept_language, "");
-  EXPECT_DEATH(auto unused = SendRequestToBfe(default_keyset_, false),
+  EXPECT_DEATH(auto unused = SendRequestToBfe(default_keyset_),
                "Accept Language must be specified");
 }
 
@@ -314,7 +318,8 @@ TEST_F(SecureInvokeLib, RequestToBfeReturnsAResponse) {
       std::move(crypto_client_),
       std::move(kv_async_client_),
       get_bids_config_,
-      executor};
+      executor,
+      /* chaff_median_trackers */ {}};
 
   auto start_service_result = StartLocalService(&buyer_front_end_service);
   std::unique_ptr<BuyerFrontEnd::StubInterface> stub =
@@ -325,7 +330,7 @@ TEST_F(SecureInvokeLib, RequestToBfeReturnsAResponse) {
   // Verifies that the encrypted request makes it to BFE and the response comes
   // back. Empty response is expected because trusted bidding signals for IG
   // are empty.
-  auto status = SendRequestToBfe(default_keyset_, false, std::move(stub));
+  auto status = SendRequestToBfe(default_keyset_, std::move(stub));
   EXPECT_TRUE(status.ok()) << status;
 }
 
@@ -340,7 +345,8 @@ TEST_F(SecureInvokeLib,
       std::move(crypto_client_),
       std::move(kv_async_client_),
       get_bids_config_,
-      executor};
+      executor,
+      /* chaff_median_trackers */ {}};
 
   auto start_service_result = StartLocalService(&buyer_front_end_service);
   std::unique_ptr<BuyerFrontEnd::StubInterface> stub =
@@ -352,7 +358,7 @@ TEST_F(SecureInvokeLib,
   // Verifies that the encrypted request makes it to BFE and the response comes
   // back. Empty response is expected because trusted bidding signals for IG
   // are empty.
-  auto status = SendRequestToBfe(default_keyset_, false, std::move(stub));
+  auto status = SendRequestToBfe(default_keyset_, std::move(stub));
   EXPECT_TRUE(status.ok()) << status;
 }
 
@@ -366,10 +372,10 @@ TEST_F(SecureInvokeLib, RequestToBfeReturnsAResponseWithDebugReportingEnabled) {
       std::move(crypto_client_),
       std::move(kv_async_client_),
       get_bids_config_,
-      executor};
+      executor,
+      /* chaff_median_trackers */ {}};
 
   auto start_service_result = StartLocalService(&buyer_front_end_service);
-  bool enable_debug_reporting = true;
   std::unique_ptr<BuyerFrontEnd::StubInterface> stub =
       CreateServiceStub<BuyerFrontEnd>(start_service_result.port);
   SetUpOptionFlags(start_service_result.port);
@@ -378,8 +384,37 @@ TEST_F(SecureInvokeLib, RequestToBfeReturnsAResponseWithDebugReportingEnabled) {
   // Verifies that the encrypted request makes it to BFE and the response comes
   // back. Empty response is expected because trusted bidding signals for IG
   // are empty.
-  auto status = SendRequestToBfe(default_keyset_, enable_debug_reporting,
-                                 std::move(stub));
+  auto status = SendRequestToBfe(default_keyset_, std::move(stub),
+                                 /*enable_debug_reporting=*/true);
+  EXPECT_TRUE(status.ok()) << status;
+}
+
+TEST_F(SecureInvokeLib,
+       RequestToBfeReturnsAResponseWithSampledDebugReportingEnabled) {
+  auto executor = server_common::EventEngineExecutor(
+      grpc_event_engine::experimental::GetDefaultEventEngine());
+  BuyerFrontEndService buyer_front_end_service{
+      std::move(bidding_signals_provider_),
+      bidding_service_client_config_,
+      std::move(key_fetcher_manager_),
+      std::move(crypto_client_),
+      std::move(kv_async_client_),
+      get_bids_config_,
+      executor,
+      /* chaff_median_trackers */ {}};
+
+  auto start_service_result = StartLocalService(&buyer_front_end_service);
+  std::unique_ptr<BuyerFrontEnd::StubInterface> stub =
+      CreateServiceStub<BuyerFrontEnd>(start_service_result.port);
+  SetUpOptionFlags(start_service_result.port);
+  absl::SetFlag(&FLAGS_json_input_str, kSampleGetBidRequest);
+
+  // Verifies that the encrypted request makes it to BFE and the response comes
+  // back. Empty response is expected because trusted bidding signals for IG
+  // are empty.
+  auto status = SendRequestToBfe(default_keyset_, std::move(stub),
+                                 /*enable_debug_reporting=*/true,
+                                 /*enable_sampled_debug_reporting=*/true);
   EXPECT_TRUE(status.ok()) << status;
 }
 
@@ -393,10 +428,10 @@ TEST_F(SecureInvokeLib, IncludesTopLevelSellerInBfeInput) {
       std::move(crypto_client_),
       std::move(kv_async_client_),
       get_bids_config_,
-      executor};
+      executor,
+      /* chaff_median_trackers */ {}};
 
   auto start_service_result = StartLocalService(&buyer_front_end_service);
-  bool enable_debug_reporting = true;
   std::unique_ptr<BuyerFrontEnd::StubInterface> stub =
       CreateServiceStub<BuyerFrontEnd>(start_service_result.port);
   SetUpOptionFlags(start_service_result.port);
@@ -405,8 +440,7 @@ TEST_F(SecureInvokeLib, IncludesTopLevelSellerInBfeInput) {
   // Verifies that the encrypted request makes it to BFE and the response comes
   // back. Empty response is expected because trusted bidding signals for IG
   // are empty.
-  auto status = SendRequestToBfe(default_keyset_, enable_debug_reporting,
-                                 std::move(stub));
+  auto status = SendRequestToBfe(default_keyset_, std::move(stub));
   EXPECT_TRUE(status.ok()) << status;
 }
 
@@ -421,10 +455,10 @@ TEST_F(SecureInvokeLib,
       std::move(crypto_client_),
       std::move(kv_async_client_),
       get_bids_config_,
-      executor};
+      executor,
+      /* chaff_median_trackers */ {}};
 
   auto start_service_result = StartLocalService(&buyer_front_end_service);
-  bool enable_debug_reporting = true;
   std::unique_ptr<BuyerFrontEnd::StubInterface> stub =
       CreateServiceStub<BuyerFrontEnd>(start_service_result.port);
   SetUpOptionFlags(start_service_result.port);
@@ -434,8 +468,7 @@ TEST_F(SecureInvokeLib,
   // Verifies that the encrypted request makes it to BFE and the response comes
   // back. Empty response is expected because trusted bidding signals for IG
   // are empty.
-  auto status = SendRequestToBfe(default_keyset_, enable_debug_reporting,
-                                 std::move(stub));
+  auto status = SendRequestToBfe(default_keyset_, std::move(stub));
   EXPECT_TRUE(status.ok()) << status;
 }
 
@@ -449,7 +482,8 @@ TEST_F(SecureInvokeLib, RequestToBfeNeedsValidKey) {
       std::move(crypto_client_),
       std::move(kv_async_client_),
       get_bids_config_,
-      executor};
+      executor,
+      /* chaff_median_trackers */ {}};
 
   auto start_service_result = StartLocalService(&buyer_front_end_service);
   std::unique_ptr<BuyerFrontEnd::StubInterface> stub =
@@ -461,10 +495,9 @@ TEST_F(SecureInvokeLib, RequestToBfeNeedsValidKey) {
   const std::string invalid_key =
       "rvJwF4YQi1hZLWMcGbDf9uGN2jQInZvtHPJsgTUewQY=";
   EXPECT_NE(invalid_key, HpkeKeyset{}.public_key);
-  EXPECT_DEATH(
-      auto unused = SendRequestToBfe(HpkeKeyset{.public_key = invalid_key},
-                                     false, std::move(stub)),
-      "Encryption Failure.");
+  EXPECT_DEATH(auto unused = SendRequestToBfe(
+                   HpkeKeyset{.public_key = invalid_key}, std::move(stub)),
+               "Encryption Failure.");
 }
 
 TEST_F(SecureInvokeLib, UsesKeyForBfeEncryption) {
@@ -477,7 +510,8 @@ TEST_F(SecureInvokeLib, UsesKeyForBfeEncryption) {
       std::move(crypto_client_),
       std::move(kv_async_client_),
       get_bids_config_,
-      executor};
+      executor,
+      /* chaff_median_trackers */ {}};
 
   auto start_service_result = StartLocalService(&buyer_front_end_service);
   std::unique_ptr<BuyerFrontEnd::StubInterface> stub =
@@ -491,7 +525,7 @@ TEST_F(SecureInvokeLib, UsesKeyForBfeEncryption) {
       "aef2701786108b58592d631c19b0dff6e18dda34089d9bed1cf26c81351ec106";
   EXPECT_NE(unrecognized_key, HpkeKeyset{}.public_key);
   auto status = SendRequestToBfe(HpkeKeyset{.public_key = unrecognized_key},
-                                 false, std::move(stub));
+                                 std::move(stub));
   EXPECT_FALSE(status.ok()) << status;
   EXPECT_THAT(status.message(), HasSubstr("Malformed request ciphertext"))
       << status;

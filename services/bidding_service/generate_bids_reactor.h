@@ -28,23 +28,15 @@
 #include "services/bidding_service/base_generate_bids_reactor.h"
 #include "services/bidding_service/benchmarking/bidding_benchmarking_logger.h"
 #include "services/bidding_service/data/runtime_config.h"
+#include "services/bidding_service/utils/validation.h"
+#include "services/common/attestation/adtech_enrollment_cache.h"
+#include "services/common/clients/cancellable_grpc_context_manager.h"
 #include "services/common/clients/code_dispatcher/v8_dispatch_client.h"
 #include "services/common/code_dispatch/code_dispatch_reactor.h"
 #include "services/common/metric/server_definition.h"
 #include "services/common/util/request_response_constants.h"
 
 namespace privacy_sandbox::bidding_auction_servers {
-
-// See GenerateBidInput for more detail on each field.
-enum class GenerateBidArgs : std::uint8_t {
-  kInterestGroup = 0,
-  kAuctionSignals,
-  kBuyerSignals,
-  kTrustedBiddingSignals,
-  kDeviceSignals,
-  kMultiBidLimit,
-  kFeatureFlags
-};
 
 //  This is a gRPC reactor that serves a single GenerateBidsRequest.
 //  It stores state relevant to the request and after the
@@ -61,7 +53,8 @@ class GenerateBidsReactor
       std::unique_ptr<BiddingBenchmarkingLogger> benchmarking_logger,
       server_common::KeyFetcherManagerInterface* key_fetcher_manager,
       CryptoClientWrapperInterface* crypto_client,
-      const BiddingServiceRuntimeConfig& runtime_config);
+      const BiddingServiceRuntimeConfig& runtime_config,
+      AdtechEnrollmentCacheInterface* adtech_attestation_cache = nullptr);
 
   // Initiates the asynchronous execution of the GenerateBidsRequest.
   void Execute() override;
@@ -70,6 +63,9 @@ class GenerateBidsReactor
   // Cleans up and deletes the GenerateBidsReactor. Called by the grpc library
   // after the response has finished.
   void OnDone() override;
+
+  // Called when the reactor is cancelled by the client or times out.
+  void OnCancel() override;
 
   // Asynchronous callback used by the v8 code executor to return a result. This
   // will be called in a different thread owned by the code dispatch library.
@@ -103,7 +99,16 @@ class GenerateBidsReactor
 
   // UDF version to use for this request.
   absl::string_view protected_audience_generate_bid_version_;
+
+  // Specifies the max size limits and sampling config for debug reporting.
+  DebugUrlsValidationConfig debug_urls_validation_config_;
+
+  // The max contributions limit for private aggregation.
   int per_adtech_paapi_contributions_limit_;
+
+  // The context manager for gRPC calls that can be cancelled.
+  std::shared_ptr<CancellableGrpcContextManager>
+      cancellable_grpc_context_manager_;
 };
 
 }  // namespace privacy_sandbox::bidding_auction_servers

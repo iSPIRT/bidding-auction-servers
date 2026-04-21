@@ -43,6 +43,7 @@
 #include "services/common/util/async_task_tracker.h"
 #include "services/common/util/cancellation_wrapper.h"
 #include "services/common/util/client_contexts.h"
+#include "services/seller_frontend_service/util/chaffing_utils.h"
 #include "src/concurrent/executor.h"
 #include "src/encryption/key_fetcher/interface/key_fetcher_manager_interface.h"
 
@@ -95,6 +96,8 @@ class GetBidsUnaryReactor : public grpc::ServerUnaryReactor {
       server_common::KeyFetcherManagerInterface* key_fetcher_manager,
       CryptoClientWrapperInterface* crypto_client,
       KVAsyncClient* kv_async_client, server_common::Executor& executor,
+      const RandomNumberGeneratorFactory& rng_factory,
+      const ChaffMedianTrackers& chaff_median_trackers,
       bool enable_benchmarking = false);
 
   explicit GetBidsUnaryReactor(
@@ -108,6 +111,8 @@ class GetBidsUnaryReactor : public grpc::ServerUnaryReactor {
       server_common::KeyFetcherManagerInterface* key_fetcher_manager,
       CryptoClientWrapperInterface* crypto_client,
       KVAsyncClient* kv_async_client, server_common::Executor& executor,
+      const RandomNumberGeneratorFactory& rng_factory,
+      const ChaffMedianTrackers& chaff_median_trackers,
       bool enable_benchmarking = false);
 
   // GetBidsUnaryReactor is neither copyable nor movable.
@@ -133,10 +138,6 @@ class GetBidsUnaryReactor : public grpc::ServerUnaryReactor {
                              FinishWithStatus)
   CLASS_CANCELLATION_WRAPPER(ExecuteChaffRequest, enable_cancellation_,
                              context_, FinishWithStatus)
-
-  // Examines gRPC request headers for custom B&A compression type header.
-  // Defaults to CompressionType::kUncompressed if no header is provided.
-  absl::StatusOr<CompressionType> GetCompressionType();
 
  private:
   // Process Outputs from Actions to prepare bidding request.
@@ -205,12 +206,11 @@ class GetBidsUnaryReactor : public grpc::ServerUnaryReactor {
   grpc::Status decrypt_status_;
 
   // Whether chaffing is enabled on the server.
-  const bool chaffing_enabled_;
-  // Whether the GetBids request follows the new SFE <> BFE request format.
-  bool use_new_payload_encoding_ = false;
+  const bool chaffing_v1_enabled_;
+  const bool chaffing_v2_enabled_;
 
   // Pseudo random number generator for chaffing and debug sampling.
-  std::optional<std::mt19937> generator_;
+  std::unique_ptr<RandomNumberGenerator> rng_;
 
   bool is_sampled_for_debug_;
 
@@ -235,10 +235,10 @@ class GetBidsUnaryReactor : public grpc::ServerUnaryReactor {
   const BiddingSignalsFetchMode bidding_signals_fetch_mode_;
 
   // Gets Protected Audience Bids.
-  void MayGetProtectedAudienceBids();
+  void GetProtectedAudienceBids();
 
   // Gets Protected App Signals bid from bidding if the feature is enabled.
-  void MayGetProtectedSignalsBids();
+  void GetProtectedSignalsBids();
 
   // Once all bids are fetched, this callback gets executed.
   void OnAllBidsDone(bool any_successful_bids);
@@ -274,6 +274,9 @@ class GetBidsUnaryReactor : public grpc::ServerUnaryReactor {
   bool should_export_debug_ = false;
 
   server_common::Executor& executor_;
+
+  const ChaffMedianTrackers& chaff_median_trackers_;
+  absl::Time start_ = absl::Now();
 };
 
 }  // namespace privacy_sandbox::bidding_auction_servers

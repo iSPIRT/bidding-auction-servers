@@ -108,6 +108,8 @@ ScoreAdsRequest::ScoreAdsRawRequest BuildRawRequest(
   output.set_scoring_signals(options.scoring_signals);
   output.set_publisher_hostname(options.publisher_hostname);
   output.set_enable_debug_reporting(options.enable_debug_reporting);
+  output.mutable_fdo_flags()->set_enable_sampled_debug_reporting(
+      options.enable_sampled_debug_reporting);
   output.set_seller_currency(options.seller_currency);
   output.set_top_level_seller(options.top_level_seller);
   output.set_seller(kTestSeller);
@@ -135,6 +137,8 @@ ScoreAdsRequest::ScoreAdsRawRequest BuildProtectedAppSignalsRawRequest(
   output.set_scoring_signals(options.scoring_signals);
   output.set_publisher_hostname(options.publisher_hostname);
   output.set_enable_debug_reporting(options.enable_debug_reporting);
+  output.mutable_fdo_flags()->set_enable_sampled_debug_reporting(
+      options.enable_sampled_debug_reporting);
   output.set_seller_currency(options.seller_currency);
   output.set_top_level_seller(options.top_level_seller);
   output.set_seller(kTestSeller);
@@ -316,7 +320,8 @@ ScoreAdsReactorTestHelper::ScoreAdsReactorTestHelper() {
 ScoreAdsResponse ScoreAdsReactorTestHelper::ExecuteScoreAds(
     const ScoreAdsRequest::ScoreAdsRawRequest& raw_request,
     MockV8DispatchClient& dispatcher,
-    const AuctionServiceRuntimeConfig& runtime_config) {
+    const AuctionServiceRuntimeConfig& runtime_config,
+    AdtechEnrollmentCacheInterface* adtech_attestation_cache) {
   SetupMockCryptoClientWrapper(raw_request, crypto_client_);
   *request_.mutable_request_ciphertext() = raw_request.SerializeAsString();
   request_.set_key_id(kKeyId);
@@ -326,7 +331,8 @@ ScoreAdsResponse ScoreAdsReactorTestHelper::ExecuteScoreAds(
   ScoreAdsReactor reactor(&context, dispatcher, &request_, &response,
                           std::move(benchmarkingLogger_),
                           key_fetcher_manager_.get(), &crypto_client_,
-                          *async_reporter, runtime_config);
+                          *async_reporter, runtime_config,
+                          adtech_attestation_cache);
   reactor.Execute();
   return response;
 }
